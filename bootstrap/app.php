@@ -12,6 +12,18 @@ $app = new Illuminate\Foundation\Application(
 
 /*
 |--------------------------------------------------------------------------
+| Configure Paths for Serverless
+|--------------------------------------------------------------------------
+*/
+
+// Use /tmp for writable paths on serverless
+$app->useStoragePath('/tmp/storage');
+
+// Override bootstrap cache path
+$app->bootstrapPath('/tmp/bootstrap');
+
+/*
+|--------------------------------------------------------------------------
 | Bind Important Interfaces
 |--------------------------------------------------------------------------
 */
