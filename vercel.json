@@ -21,7 +21,7 @@
   "env": {
     "APP_NAME": "Puskesmas Stock",
     "APP_ENV": "production",
-    "APP_KEY": "base64:RHJ5YW5hZGlwMjYwMVB1c2tlc21hc0tleVNlY3VyZQ==",
+    "APP_KEY": "base64:YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
     "APP_DEBUG": "true",
     "APP_URL": "https://nama-barang-uptd.vercel.app",
     "APP_CONFIG_CACHE": "/tmp/config.php",
