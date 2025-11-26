@@ -1,32 +1,29 @@
 <?php
 
-$databaseUrl = env('DATABASE_URL');
-$pgConnection = [
-    'driver' => 'pgsql',
-    'host' => env('DB_HOST', '127.0.0.1'),
-    'port' => env('DB_PORT', '5432'),
-    'database' => env('DB_DATABASE', 'railway'),
-    'username' => env('DB_USERNAME', 'postgres'),
-    'password' => env('DB_PASSWORD', ''),
-    'charset' => 'utf8',
-    'prefix' => '',
-    'prefix_indexes' => true,
-    'search_path' => 'public',
-    'sslmode' => 'prefer',
-];
+use Illuminate\Support\Str;
 
-// Parse DATABASE_URL jika tersedia (Railway)
+// Parse DATABASE_URL jika tersedia (Railway/Heroku style)
+$databaseUrl = getenv('DATABASE_URL') ?: env('DATABASE_URL');
+
+$pgHost = env('DB_HOST', '127.0.0.1');
+$pgPort = env('DB_PORT', '5432');
+$pgDatabase = env('DB_DATABASE', 'railway');
+$pgUsername = env('DB_USERNAME', 'postgres');
+$pgPassword = env('DB_PASSWORD', '');
+
 if ($databaseUrl) {
     $parsed = parse_url($databaseUrl);
-    $pgConnection['host'] = $parsed['host'] ?? $pgConnection['host'];
-    $pgConnection['port'] = $parsed['port'] ?? $pgConnection['port'];
-    $pgConnection['database'] = ltrim($parsed['path'] ?? '/railway', '/');
-    $pgConnection['username'] = $parsed['user'] ?? $pgConnection['username'];
-    $pgConnection['password'] = $parsed['pass'] ?? $pgConnection['password'];
+    if ($parsed) {
+        $pgHost = $parsed['host'] ?? $pgHost;
+        $pgPort = $parsed['port'] ?? $pgPort;
+        $pgDatabase = isset($parsed['path']) ? ltrim($parsed['path'], '/') : $pgDatabase;
+        $pgUsername = $parsed['user'] ?? $pgUsername;
+        $pgPassword = isset($parsed['pass']) ? urldecode($parsed['pass']) : $pgPassword;
+    }
 }
 
 return [
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => getenv('DB_CONNECTION') ?: env('DB_CONNECTION', 'sqlite'),
 
     'connections' => [
         'sqlite' => [
@@ -50,7 +47,19 @@ return [
             'engine' => null,
         ],
 
-        'pgsql' => $pgConnection,
+        'pgsql' => [
+            'driver' => 'pgsql',
+            'host' => $pgHost,
+            'port' => $pgPort,
+            'database' => $pgDatabase,
+            'username' => $pgUsername,
+            'password' => $pgPassword,
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
     ],
 
     'migrations' => 'migrations',
