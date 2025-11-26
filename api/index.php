@@ -2,25 +2,60 @@
 
 /**
  * Vercel Serverless Entry Point
- * This file handles all requests and forwards them to Laravel
  */
 
-// Define base path
 define('LARAVEL_START', microtime(true));
 
-// Register The Auto Loader
-require __DIR__ . '/../vendor/autoload.php';
+// Set error reporting
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-// Bootstrap Laravel
-$app = require_once __DIR__ . '/../bootstrap/app.php';
+try {
+    // Register Composer autoloader
+    require __DIR__ . '/../vendor/autoload.php';
 
-// Handle The Request
-$kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+    // Bootstrap Laravel
+    $app = require_once __DIR__ . '/../bootstrap/app.php';
 
-$response = $kernel->handle(
-    $request = Illuminate\Http\Request::capture()
-);
+    // Ensure storage directories exist
+    $storagePaths = [
+        '/tmp/views',
+        '/tmp/cache',
+        '/tmp/sessions',
+        '/tmp/framework/views',
+    ];
+    
+    foreach ($storagePaths as $path) {
+        if (!is_dir($path)) {
+            @mkdir($path, 0755, true);
+        }
+    }
 
-$response->send();
+    // Create SQLite database if needed
+    $dbPath = '/tmp/database.sqlite';
+    if (!file_exists($dbPath)) {
+        @touch($dbPath);
+    }
 
-$kernel->terminate($request, $response);
+    // Handle The Request
+    $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+
+    $response = $kernel->handle(
+        $request = Illuminate\Http\Request::capture()
+    );
+
+    $response->send();
+
+    $kernel->terminate($request, $response);
+
+} catch (Throwable $e) {
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'error' => true,
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => explode("\n", $e->getTraceAsString())
+    ]);
+}
