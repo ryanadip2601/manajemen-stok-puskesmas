@@ -12,48 +12,49 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Create Admin User
-        User::create([
-            'name' => 'Admin Puskesmas',
-            'email' => 'admin@puskesmas.com',
-            'password' => bcrypt('password123'),
-            'role' => 'admin'
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@puskesmas.com'],
+            [
+                'name' => 'Admin Puskesmas',
+                'password' => bcrypt('password123'),
+                'role' => 'admin'
+            ]
+        );
 
         // Create Staff User
-        User::create([
-            'name' => 'Staff Gudang',
-            'email' => 'staff@puskesmas.com',
-            'password' => bcrypt('password123'),
-            'role' => 'staff'
-        ]);
+        User::firstOrCreate(
+            ['email' => 'staff@puskesmas.com'],
+            [
+                'name' => 'Staff Gudang',
+                'password' => bcrypt('password123'),
+                'role' => 'staff'
+            ]
+        );
 
         // Create Units
-        Unit::create(['name' => 'Box', 'symbol' => 'Box']);
-        Unit::create(['name' => 'Pcs', 'symbol' => 'Pcs']);
-        Unit::create(['name' => 'Strip', 'symbol' => 'Strip']);
-        Unit::create(['name' => 'Botol', 'symbol' => 'Btl']);
-        Unit::create(['name' => 'Tube', 'symbol' => 'Tube']);
-        Unit::create(['name' => 'Sachet', 'symbol' => 'Sct']);
+        $units = [
+            ['name' => 'Box', 'symbol' => 'Box'],
+            ['name' => 'Pcs', 'symbol' => 'Pcs'],
+            ['name' => 'Strip', 'symbol' => 'Strip'],
+            ['name' => 'Botol', 'symbol' => 'Btl'],
+            ['name' => 'Tube', 'symbol' => 'Tube'],
+            ['name' => 'Sachet', 'symbol' => 'Sct'],
+        ];
+
+        foreach ($units as $unit) {
+            Unit::firstOrCreate(['name' => $unit['name']], $unit);
+        }
 
         // Create Categories
-        Category::create([
-            'name' => 'Obat-obatan',
-            'description' => 'Kategori untuk obat-obatan umum'
-        ]);
+        $categories = [
+            ['name' => 'Obat-obatan', 'description' => 'Kategori untuk obat-obatan umum'],
+            ['name' => 'Alat Kesehatan', 'description' => 'Kategori untuk alat kesehatan medis'],
+            ['name' => 'Vitamin & Suplemen', 'description' => 'Kategori untuk vitamin dan suplemen kesehatan'],
+            ['name' => 'Alat Tulis', 'description' => 'Kategori untuk alat tulis kantor'],
+        ];
 
-        Category::create([
-            'name' => 'Alat Kesehatan',
-            'description' => 'Kategori untuk alat kesehatan medis'
-        ]);
-
-        Category::create([
-            'name' => 'Vitamin & Suplemen',
-            'description' => 'Kategori untuk vitamin dan suplemen kesehatan'
-        ]);
-
-        Category::create([
-            'name' => 'Alat Tulis',
-            'description' => 'Kategori untuk alat tulis kantor'
-        ]);
+        foreach ($categories as $category) {
+            Category::firstOrCreate(['name' => $category['name']], $category);
+        }
     }
 }

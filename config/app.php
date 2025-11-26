@@ -1,20 +1,16 @@
 <?php
 
 return [
-    'name' => env('APP_NAME', 'Laravel'),
-    'env' => env('APP_ENV', 'production'),
-    'debug' => (bool) env('APP_DEBUG', false),
+    'name' => env('APP_NAME', 'Puskesmas Stock'),
+    'env' => env('APP_ENV', 'local'),
+    'debug' => (bool) env('APP_DEBUG', true),
     'url' => env('APP_URL', 'http://localhost'),
-    'asset_url' => env('ASSET_URL'),
     'timezone' => 'Asia/Jakarta',
     'locale' => 'id',
     'fallback_locale' => 'en',
     'faker_locale' => 'id_ID',
     'key' => env('APP_KEY'),
     'cipher' => 'AES-256-CBC',
-    'maintenance' => [
-        'driver' => 'file',
-    ],
 
     'providers' => [
         Illuminate\Auth\AuthServiceProvider::class,
@@ -43,7 +39,5 @@ return [
         App\Providers\RouteServiceProvider::class,
     ],
 
-    'aliases' => Illuminate\Support\Facades\Facade::defaultAliases()->merge([
-        //
-    ])->toArray(),
+    'aliases' => Illuminate\Support\Facades\Facade::defaultAliases()->merge([])->toArray(),
 ];

@@ -1,16 +1,22 @@
 <?php
 
 return [
-    'default' => env('CACHE_DRIVER', 'array'),
+    'default' => env('CACHE_DRIVER', 'file'),
     'stores' => [
-        'array' => [
-            'driver' => 'array',
-            'serialize' => false,
-        ],
         'file' => [
             'driver' => 'file',
             'path' => storage_path('framework/cache/data'),
         ],
+        'database' => [
+            'driver' => 'database',
+            'table' => 'cache',
+            'connection' => env('DB_CONNECTION'),
+            'lock_connection' => env('DB_CONNECTION'),
+        ],
+        'array' => [
+            'driver' => 'array',
+            'serialize' => false,
+        ],
     ],
-    'prefix' => env('CACHE_PREFIX', 'laravel_cache_'),
+    'prefix' => 'puskesmas_cache_',
 ];
