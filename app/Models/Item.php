@@ -13,8 +13,10 @@ class Item extends Model
         'category_id',
         'unit_id',
         'code',
+        'barcode',
         'name',
         'description',
+        'photo',
         'stock',
         'minimum_stock',
     ];
@@ -52,5 +54,13 @@ class Item extends Model
     public function scopeLowStock($query)
     {
         return $query->whereColumn('stock', '<=', 'minimum_stock');
+    }
+
+    public function getPhotoUrl()
+    {
+        if ($this->photo) {
+            return asset('storage/' . $this->photo);
+        }
+        return null;
     }
 }

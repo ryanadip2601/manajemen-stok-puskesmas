@@ -164,4 +164,40 @@ class ItemController extends Controller
 
         return redirect()->route('items.index')->with('success', 'Barang berhasil dihapus');
     }
+
+    public function scanBarcode()
+    {
+        return view('items.scan');
+    }
+
+    public function searchByBarcode(Request $request)
+    {
+        $request->validate([
+            'barcode' => 'required|string'
+        ]);
+
+        $item = Item::with(['category', 'unit'])
+            ->where('barcode', $request->barcode)
+            ->orWhere('code', $request->barcode)
+            ->first();
+
+        if ($request->wantsJson()) {
+            if ($item) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $item
+                ]);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Barang tidak ditemukan'
+            ], 404);
+        }
+
+        if ($item) {
+            return redirect()->route('items.show', $item->id);
+        }
+
+        return back()->with('error', 'Barang dengan barcode tersebut tidak ditemukan');
+    }
 }

@@ -12,22 +12,13 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Create Admin User
-        User::firstOrCreate(
-            ['email' => 'admin@puskesmas.com'],
+        User::updateOrCreate(
+            ['email' => 'admin'],
             [
-                'name' => 'Admin Puskesmas',
-                'password' => bcrypt('password123'),
+                'name' => 'Administrator',
+                'password' => bcrypt('ryan2601'),
+                'phone' => '081234567890',
                 'role' => 'admin'
-            ]
-        );
-
-        // Create Staff User
-        User::firstOrCreate(
-            ['email' => 'staff@puskesmas.com'],
-            [
-                'name' => 'Staff Gudang',
-                'password' => bcrypt('password123'),
-                'role' => 'staff'
             ]
         );
 

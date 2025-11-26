@@ -152,6 +152,58 @@ class StockService
                 ->lowStock()
                 ->take(10)
                 ->get(),
+            'chart_data' => $this->getChartData(),
+        ];
+    }
+
+    public function getChartData()
+    {
+        // Data untuk 6 bulan terakhir
+        $months = [];
+        $stockInData = [];
+        $stockOutData = [];
+        
+        for ($i = 5; $i >= 0; $i--) {
+            $date = now()->subMonths($i);
+            $monthName = $date->translatedFormat('M Y');
+            $months[] = $monthName;
+            
+            // Hitung total stock in per bulan
+            $stockInData[] = StockIn::whereYear('date', $date->year)
+                ->whereMonth('date', $date->month)
+                ->sum('quantity');
+            
+            // Hitung total stock out per bulan
+            $stockOutData[] = StockOut::whereYear('date', $date->year)
+                ->whereMonth('date', $date->month)
+                ->sum('quantity');
+        }
+
+        // Data stok per kategori
+        $categories = \App\Models\Category::withCount('items')
+            ->withSum('items', 'stock')
+            ->get();
+        
+        $categoryNames = $categories->pluck('name')->toArray();
+        $categoryStocks = $categories->pluck('items_sum_stock')->map(fn($val) => $val ?? 0)->toArray();
+
+        // Top 5 items dengan stok terbanyak
+        $topItems = Item::with('unit')
+            ->orderBy('stock', 'desc')
+            ->take(5)
+            ->get();
+        
+        $topItemNames = $topItems->pluck('name')->toArray();
+        $topItemStocks = $topItems->pluck('stock')->toArray();
+
+        return [
+            'months' => $months,
+            'stock_in' => $stockInData,
+            'stock_out' => $stockOutData,
+            'category_names' => $categoryNames,
+            'category_stocks' => $categoryStocks,
+            'top_item_names' => $topItemNames,
+            'top_item_stocks' => $topItemStocks,
         ];
     }
 }
