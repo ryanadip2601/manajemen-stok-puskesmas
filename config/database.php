@@ -2,28 +2,40 @@
 
 use Illuminate\Support\Str;
 
-// Parse DATABASE_URL jika tersedia (Railway/Heroku style)
-$databaseUrl = getenv('DATABASE_URL') ?: env('DATABASE_URL');
+// Parse DATABASE_URL untuk Railway/Heroku
+$databaseUrl = $_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? getenv('DATABASE_URL') ?? env('DATABASE_URL');
 
-$pgHost = env('DB_HOST', '127.0.0.1');
-$pgPort = env('DB_PORT', '5432');
-$pgDatabase = env('DB_DATABASE', 'railway');
-$pgUsername = env('DB_USERNAME', 'postgres');
-$pgPassword = env('DB_PASSWORD', '');
+$pgHost = '127.0.0.1';
+$pgPort = '5432';
+$pgDatabase = 'railway';
+$pgUsername = 'postgres';
+$pgPassword = '';
 
-if ($databaseUrl) {
+if (!empty($databaseUrl)) {
     $parsed = parse_url($databaseUrl);
-    if ($parsed) {
+    if ($parsed !== false) {
         $pgHost = $parsed['host'] ?? $pgHost;
-        $pgPort = $parsed['port'] ?? $pgPort;
+        $pgPort = (string)($parsed['port'] ?? $pgPort);
         $pgDatabase = isset($parsed['path']) ? ltrim($parsed['path'], '/') : $pgDatabase;
         $pgUsername = $parsed['user'] ?? $pgUsername;
         $pgPassword = isset($parsed['pass']) ? urldecode($parsed['pass']) : $pgPassword;
     }
 }
 
+// Fallback ke env variables jika DATABASE_URL tidak ada
+if (empty($databaseUrl)) {
+    $pgHost = env('DB_HOST', $pgHost);
+    $pgPort = env('DB_PORT', $pgPort);
+    $pgDatabase = env('DB_DATABASE', $pgDatabase);
+    $pgUsername = env('DB_USERNAME', $pgUsername);
+    $pgPassword = env('DB_PASSWORD', $pgPassword);
+}
+
+// Determine default connection
+$defaultConnection = $_ENV['DB_CONNECTION'] ?? $_SERVER['DB_CONNECTION'] ?? getenv('DB_CONNECTION') ?? env('DB_CONNECTION', 'sqlite');
+
 return [
-    'default' => getenv('DB_CONNECTION') ?: env('DB_CONNECTION', 'sqlite'),
+    'default' => $defaultConnection,
 
     'connections' => [
         'sqlite' => [
