@@ -2,7 +2,11 @@
 nixPkgs = ["php82", "php82Packages.composer"]
 
 [phases.install]
-cmds = ["composer install --no-dev --optimize-autoloader"]
+cmds = [
+    "rm -f bootstrap/cache/*.php",
+    "composer install --no-dev --optimize-autoloader",
+    "php artisan package:discover --ansi || true"
+]
 
 [start]
-cmd = "php artisan migrate --force || true && php artisan db:seed --force || true && php artisan serve --host=0.0.0.0 --port=${PORT:-8080}"
+cmd = "php artisan config:clear && php artisan cache:clear && php artisan migrate --force || true && php artisan db:seed --force || true && php artisan serve --host=0.0.0.0 --port=${PORT:-8080}"
