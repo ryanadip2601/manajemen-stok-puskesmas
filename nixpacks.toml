@@ -3,7 +3,12 @@ nixPkgs = ["php82", "php82Packages.composer"]
 aptPkgs = ["libpq-dev"]
 
 [phases.install]
-cmds = ["composer install --no-dev --optimize-autoloader"]
+cmds = [
+    "composer install --no-dev --optimize-autoloader",
+    "php artisan package:discover --ansi || true",
+    "php artisan config:clear || true",
+    "php artisan cache:clear || true"
+]
 
 [variables]
 PHP_VERSION = "8.2"
