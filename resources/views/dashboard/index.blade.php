@@ -5,6 +5,95 @@
 @section('breadcrumb', 'Selamat datang di Sistem Manajemen Stok Barang')
 
 @section('content')
+    <!-- Traktir Kopi Section -->
+    <div x-data="{ showDonate: false, copied: false }" class="mb-6">
+        <div class="dark:bg-gradient-to-r dark:from-amber-900/30 dark:via-orange-900/20 dark:to-yellow-900/30 bg-gradient-to-r from-amber-100 via-orange-50 to-yellow-100 rounded-2xl border dark:border-amber-500/30 border-amber-300 overflow-hidden">
+            <div class="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/30 animate-bounce">
+                        <i class="fas fa-mug-hot text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold dark:text-amber-300 text-amber-700 flex items-center gap-2">
+                            <i class="fas fa-heart text-red-400 animate-pulse"></i>
+                            Traktir Kopi
+                        </h3>
+                        <p class="text-sm dark:text-slate-400 text-slate-600">Dukung pengembang dengan secangkir kopi!</p>
+                    </div>
+                </div>
+                <button @click="showDonate = !showDonate" 
+                        class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl shadow-lg hover:shadow-amber-500/30 transition-all transform hover:scale-105 flex items-center gap-2">
+                    <i class="fas fa-coffee"></i>
+                    <span x-text="showDonate ? 'Tutup' : 'Donasi Sekarang'"></span>
+                    <i class="fas fa-chevron-down transition-transform" :class="{ 'rotate-180': showDonate }"></i>
+                </button>
+            </div>
+            
+            <!-- Expandable Payment Section -->
+            <div x-show="showDonate" x-collapse x-cloak class="border-t dark:border-amber-500/20 border-amber-300">
+                <div class="p-6 dark:bg-slate-800/50 bg-white/50">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- DANA -->
+                        <div class="dark:bg-slate-700/50 bg-white rounded-xl p-5 border-2 border-blue-500/30 hover:border-blue-500 transition-all group">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                                    <span class="text-white font-black text-lg">DANA</span>
+                                </div>
+                                <div>
+                                    <p class="font-bold dark:text-white text-slate-800">DANA</p>
+                                    <p class="text-xs dark:text-slate-400 text-slate-500">Transfer via DANA</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between dark:bg-slate-600/50 bg-slate-100 rounded-lg p-3">
+                                <div>
+                                    <p class="text-xs dark:text-slate-400 text-slate-500">Nomor DANA</p>
+                                    <p class="text-xl font-bold dark:text-white text-slate-800 font-mono">085348440470</p>
+                                </div>
+                                <button @click="navigator.clipboard.writeText('085348440470'); copied = 'dana'; setTimeout(() => copied = false, 2000)" 
+                                        class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition flex items-center gap-2">
+                                    <i class="fas" :class="copied === 'dana' ? 'fa-check' : 'fa-copy'"></i>
+                                    <span x-text="copied === 'dana' ? 'Tersalin!' : 'Salin'"></span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- GoPay -->
+                        <div class="dark:bg-slate-700/50 bg-white rounded-xl p-5 border-2 border-green-500/30 hover:border-green-500 transition-all group">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
+                                    <i class="fas fa-wallet text-white text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold dark:text-white text-slate-800">GoPay</p>
+                                    <p class="text-xs dark:text-slate-400 text-slate-500">Transfer via GoPay</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between dark:bg-slate-600/50 bg-slate-100 rounded-lg p-3">
+                                <div>
+                                    <p class="text-xs dark:text-slate-400 text-slate-500">Nomor GoPay</p>
+                                    <p class="text-xl font-bold dark:text-white text-slate-800 font-mono">085348440470</p>
+                                </div>
+                                <button @click="navigator.clipboard.writeText('085348440470'); copied = 'gopay'; setTimeout(() => copied = false, 2000)" 
+                                        class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition flex items-center gap-2">
+                                    <i class="fas" :class="copied === 'gopay' ? 'fa-check' : 'fa-copy'"></i>
+                                    <span x-text="copied === 'gopay' ? 'Tersalin!' : 'Salin'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Thank You Message -->
+                    <div class="mt-4 text-center">
+                        <p class="text-sm dark:text-slate-400 text-slate-600">
+                            <i class="fas fa-heart text-red-400 mr-1"></i>
+                            Terima kasih atas dukungan Anda! Setiap donasi sangat berarti untuk pengembangan aplikasi ini.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Stats Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div onclick="showModal('items')" class="card-hover bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border border-slate-700/50 cursor-pointer hover:border-blue-500/50">

@@ -6,6 +6,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\StockInController;
 use App\Http\Controllers\StockOutController;
+use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -60,6 +61,12 @@ Route::middleware('auth')->group(function () {
         // Scan Barcode - Admin only
         Route::get('/scan', [ItemController::class, 'scanBarcode'])->name('items.scan');
         Route::post('/scan/search', [ItemController::class, 'searchByBarcode'])->name('items.scan.search');
+
+        // Reports
+        Route::get('/reports/monthly', [ReportController::class, 'monthly'])->name('reports.monthly');
+        Route::get('/reports/monthly/export', [ReportController::class, 'exportMonthlyCSV'])->name('reports.monthly.export');
+        Route::get('/reports/yearly', [ReportController::class, 'yearly'])->name('reports.yearly');
+        Route::get('/reports/yearly/export', [ReportController::class, 'exportYearlyCSV'])->name('reports.yearly.export');
     });
     
     // Items - Semua user bisa lihat (SETELAH route spesifik)
