@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\StockIn;
 use App\Models\Item;
+use App\Models\PermintaanBarang;
 use App\Services\StockService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class StockInController extends Controller
@@ -19,14 +21,31 @@ class StockInController extends Controller
 
     public function index(Request $request)
     {
+        // Simpan filter ke session jika ada parameter baru
+        if ($request->has('item_id') || $request->has('start_date') || $request->has('end_date')) {
+            session([
+                'stock_in_filter' => [
+                    'item_id' => $request->item_id,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                ]
+            ]);
+        }
+
+        // Ambil filter dari session
+        $filters = session('stock_in_filter', []);
+        $item_id = $request->item_id ?? ($filters['item_id'] ?? null);
+        $start_date = $request->start_date ?? ($filters['start_date'] ?? null);
+        $end_date = $request->end_date ?? ($filters['end_date'] ?? null);
+
         $stockIns = StockIn::with(['item.category', 'item.unit', 'user'])
-            ->when($request->item_id, function ($query, $itemId) {
+            ->when($item_id, function ($query, $itemId) {
                 $query->where('item_id', $itemId);
             })
-            ->when($request->start_date, function ($query, $startDate) {
+            ->when($start_date, function ($query, $startDate) {
                 $query->whereDate('date', '>=', $startDate);
             })
-            ->when($request->end_date, function ($query, $endDate) {
+            ->when($end_date, function ($query, $endDate) {
                 $query->whereDate('date', '<=', $endDate);
             })
             ->latest('date')
@@ -40,7 +59,14 @@ class StockInController extends Controller
         }
 
         $items = Item::all();
-        return view('stock_in.index', compact('stockIns', 'items'));
+        $activeFilters = compact('item_id', 'start_date', 'end_date');
+        return view('stock_in.index', compact('stockIns', 'items', 'activeFilters'));
+    }
+
+    public function clearFilter()
+    {
+        session()->forget('stock_in_filter');
+        return redirect()->route('stock-in.index');
     }
 
     public function show($id)
@@ -59,7 +85,7 @@ class StockInController extends Controller
 
     public function create()
     {
-        $items = Item::with(['category', 'unit'])->get();
+        $items = Item::with(['category', 'unit'])->orderBy('name', 'asc')->get();
         return view('stock_in.create', compact('items'));
     }
 
@@ -79,6 +105,9 @@ class StockInController extends Controller
 
         try {
             $stockIn = $this->stockService->addStockIn($validated);
+
+            // Auto-check: tandai permintaan restok yang terpenuhi
+            PermintaanBarang::checkAndUpdateAvailability($validated['item_id']);
 
             if ($request->wantsJson()) {
                 return response()->json([
@@ -104,7 +133,7 @@ class StockInController extends Controller
     public function edit($id)
     {
         $stockIn = StockIn::with(['item'])->findOrFail($id);
-        $items = Item::with(['category', 'unit'])->get();
+        $items = Item::with(['category', 'unit'])->orderBy('name', 'asc')->get();
         return view('stock_in.edit', compact('stockIn', 'items'));
     }
 
@@ -171,6 +200,42 @@ class StockInController extends Controller
                 ], 400);
             }
 
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function storeBatch(Request $request)
+    {
+        $request->validate([
+            'items' => 'required|string',
+            'date' => 'required|date',
+        ]);
+
+        $itemsData = json_decode($request->items, true);
+        
+        if (!is_array($itemsData) || count($itemsData) === 0) {
+            return back()->with('error', 'Tidak ada barang yang ditambahkan');
+        }
+
+        try {
+            DB::transaction(function () use ($itemsData, $request) {
+                foreach ($itemsData as $itemData) {
+                    $this->stockService->addStockIn([
+                        'item_id' => $itemData['item_id'],
+                        'quantity' => $itemData['quantity'],
+                        'date' => $request->date,
+                        'notes' => $itemData['notes'] ?? null,
+                    ]);
+
+                    // Auto-check: tandai permintaan restok yang terpenuhi
+                    PermintaanBarang::checkAndUpdateAvailability($itemData['item_id']);
+                }
+            });
+
+            $count = count($itemsData);
+            return redirect()->route('stock-in.index')
+                ->with('success', "{$count} transaksi barang masuk berhasil ditambahkan");
+        } catch (Exception $e) {
             return back()->with('error', $e->getMessage());
         }
     }

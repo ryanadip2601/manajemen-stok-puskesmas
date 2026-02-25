@@ -1,0 +1,196 @@
+================================================================================
+DAFTAR FILE UNTUK UPLOAD KE HOSTINGER
+Tanggal: 1 Desember 2025
+================================================================================
+
+================================================================================
+BAGIAN 1: FILE BARU (WAJIB UPLOAD)
+================================================================================
+
+--- CONTROLLERS BARU ---
+app/Http/Controllers/BarangAsetController.php
+app/Http/Controllers/KategoriAsetController.php
+app/Http/Controllers/PemeliharaanAsetController.php
+app/Http/Controllers/PenyusutanController.php
+app/Http/Controllers/RuanganController.php
+app/Http/Controllers/StockOutRequestController.php
+app/Http/Controllers/UserMonitorController.php
+app/Http/Controllers/UsulanPenerimaanController.php
+
+--- MIDDLEWARE BARU ---
+app/Http/Middleware/StaffAsetAccess.php
+app/Http/Middleware/UpdateLastActivity.php
+app/Http/Middleware/WarehouseAccess.php
+
+--- MODELS BARU ---
+app/Models/BarangAset.php
+app/Models/KategoriAset.php
+app/Models/LoginHistory.php
+app/Models/PemeliharaanAset.php
+app/Models/PenyusutanAset.php
+app/Models/Ruangan.php
+app/Models/StockOutRequest.php
+app/Models/UsulanPenerimaanBarang.php
+
+--- SERVICES BARU ---
+app/Services/PenyusutanService.php
+
+--- MIGRATIONS BARU ---
+database/migrations/2024_01_03_000001_add_approval_to_users_table.php
+database/migrations/2024_01_03_000002_create_password_reset_tokens_table.php
+database/migrations/2024_01_04_000001_update_role_enum_in_users_table.php
+database/migrations/2024_01_05_000001_create_stock_out_requests_table.php
+database/migrations/2024_01_06_000001_create_login_histories_table.php
+database/migrations/2024_01_07_000001_add_perolehan_and_price_to_items_table.php
+database/migrations/2024_01_08_000001_create_ruangan_table.php
+database/migrations/2024_01_08_000002_create_kategori_aset_table.php
+database/migrations/2024_01_08_000003_create_barang_aset_table.php
+database/migrations/2024_01_08_000004_create_pemeliharaan_aset_table.php
+database/migrations/2024_01_09_000001_add_penyusutan_fields_to_kategori_aset.php
+database/migrations/2024_01_09_000002_add_penyusutan_fields_to_barang_aset.php
+database/migrations/2024_01_09_000003_create_penyusutan_aset_table.php
+database/migrations/2024_01_10_000001_add_remember_token_to_users_table.php
+database/migrations/2024_01_11_000001_create_usulan_penerimaan_barang_table.php
+
+--- SEEDERS BARU ---
+database/seeders/UpdateAdminSeeder.php
+
+--- VIEWS FOLDER BARU (UPLOAD SELURUH FOLDER) ---
+resources/views/auth/pending-users.blade.php
+resources/views/barang-aset/ (seluruh folder)
+resources/views/emails/ (seluruh folder)
+resources/views/kategori-aset/ (seluruh folder)
+resources/views/pemeliharaan/ (seluruh folder)
+resources/views/penyusutan/ (seluruh folder)
+resources/views/ruangan/ (seluruh folder)
+resources/views/stock_out/staff/ (seluruh folder)
+resources/views/stock_out_requests/ (seluruh folder)
+resources/views/users/ (seluruh folder)
+resources/views/usulan-penerimaan/ (seluruh folder)
+
+--- FILE KONFIGURASI BARU ---
+.htaccess
+public/.htaccess
+public/setup.php
+backup_database.php
+
+================================================================================
+BAGIAN 2: FILE YANG DIMODIFIKASI (WAJIB UPLOAD/REPLACE)
+================================================================================
+
+--- ROUTES ---
+routes/web.php
+
+--- KERNEL ---
+app/Http/Kernel.php
+
+--- CONTROLLERS MODIFIED ---
+app/Http/Controllers/AuthController.php
+app/Http/Controllers/ItemController.php
+app/Http/Controllers/ReportController.php
+app/Http/Controllers/StockOutController.php
+
+--- MODELS MODIFIED ---
+app/Models/User.php
+app/Models/Item.php
+
+--- CONFIG ---
+config/database.php
+config/mail.php
+
+--- VIEWS MODIFIED ---
+resources/views/layouts/app.blade.php
+resources/views/dashboard/index.blade.php
+resources/views/auth/forgot-password.blade.php
+resources/views/auth/login.blade.php
+resources/views/auth/register.blade.php
+resources/views/auth/reset-password.blade.php
+resources/views/categories/create.blade.php
+resources/views/categories/edit.blade.php
+resources/views/categories/index.blade.php
+resources/views/items/create.blade.php
+resources/views/items/edit.blade.php
+resources/views/items/index.blade.php
+resources/views/reports/monthly.blade.php
+resources/views/stock_in/create.blade.php
+resources/views/stock_in/edit.blade.php
+resources/views/stock_in/index.blade.php
+resources/views/stock_out/create.blade.php
+resources/views/stock_out/edit.blade.php
+resources/views/stock_out/index.blade.php
+
+--- ENV EXAMPLE ---
+.env.example
+
+================================================================================
+BAGIAN 3: FILE YANG DIHAPUS (HAPUS DI HOSTINGER JIKA ADA)
+================================================================================
+
+MIGRATION_SUMMARY.md
+MYSQL_TO_POSTGRES_MIGRATION.md
+POSTGRESQL_MIGRATION_CHECKLIST.md
+POSTGRESQL_QUICK_START.md
+RAILWAY_DEPLOY.md
+README_POSTGRESQL.md
+VERCEL_404_FIX.md
+VERCEL_DEPLOYMENT_GUIDE.md
+VERCEL_VITE_FIX.md
+nixpacks.toml
+railway.json
+start.sh
+resources/views/auth/verify-code.blade.php
+
+================================================================================
+BAGIAN 4: PERINTAH SETELAH UPLOAD
+================================================================================
+
+Jalankan perintah berikut di terminal Hostinger (SSH atau File Manager Terminal):
+
+1. Masuk ke direktori project:
+   cd public_html
+
+2. Jalankan migrasi database:
+   php artisan migrate
+
+3. Clear cache:
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:clear
+
+4. Set permission storage (jika perlu):
+   chmod -R 775 storage
+   chmod -R 775 bootstrap/cache
+
+================================================================================
+BAGIAN 5: FITUR BARU YANG DITAMBAHKAN
+================================================================================
+
+1. MODUL ASET PER RUANGAN
+   - Manajemen Ruangan
+   - Kategori Aset
+   - Barang Aset (inventaris)
+   - Pemeliharaan Aset
+   - Penyusutan Aset
+
+2. MODUL USULAN PENERIMAAN BARANG
+   - User bisa mengajukan usulan
+   - Admin bisa approve/reject/minta revisi
+   - Export CSV (untuk Administrator & Admin Gudang)
+
+3. MODUL PERMINTAAN PENGAMBILAN BARANG
+   - Staff bisa request barang
+   - Checklist approval admin
+
+4. MODUL MANAJEMEN USER
+   - Approval user baru
+   - Monitor login history
+   - Activity logs
+   - Role management (Admin, Admin Gudang, Staff)
+
+5. FITUR TAMBAHAN
+   - Dark mode support
+   - Remember me login
+   - Password reset via email
+   - Export laporan CSV
+
+================================================================================

@@ -16,6 +16,8 @@ class Item extends Model
         'barcode',
         'name',
         'description',
+        'perolehan',
+        'price',
         'photo',
         'stock',
         'minimum_stock',
@@ -24,7 +26,20 @@ class Item extends Model
     protected $casts = [
         'stock' => 'integer',
         'minimum_stock' => 'integer',
+        'price' => 'decimal:2',
     ];
+
+    // Daftar pilihan perolehan
+    public static function getPerolehanOptions()
+    {
+        return [
+            'APBD Balikpapan' => 'APBD Balikpapan',
+            'BLUD' => 'BLUD',
+            'Dropping IFK/DKK - APBD Balikpapan' => 'Dropping IFK/DKK - APBD Balikpapan',
+            'Dropping IFK/DKK - APBN' => 'Dropping IFK/DKK - APBN',
+            'HIBAH OPD LAIN BALIKPAPAN' => 'HIBAH OPD LAIN BALIKPAPAN',
+        ];
+    }
 
     public function category()
     {
@@ -59,6 +74,10 @@ class Item extends Model
     public function getPhotoUrl()
     {
         if ($this->photo) {
+            // Jika photo adalah URL lengkap (dari pencarian Google)
+            if (str_starts_with($this->photo, 'http://') || str_starts_with($this->photo, 'https://')) {
+                return $this->photo;
+            }
             return asset('storage/' . $this->photo);
         }
         return null;

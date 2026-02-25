@@ -4,10 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Log;
+use App\Models\LoginHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
@@ -50,18 +55,17 @@ class AuthController extends Controller
             'email' => $request->email,
             'phone' => $request->phone,
             'password' => Hash::make($request->password),
-            'role' => 'staff', // Default role untuk pendaftaran baru
+            'role' => 'staff',
+            'is_approved' => false,
         ]);
-
-        Auth::login($user);
 
         Log::create([
             'user_id' => $user->id,
             'action' => 'register',
-            'description' => 'User baru ' . $user->name . ' mendaftar sebagai staff'
+            'description' => 'User baru ' . $user->name . ' mendaftar, menunggu persetujuan admin'
         ]);
 
-        return redirect()->route('dashboard')->with('success', 'Selamat datang! Akun Anda berhasil dibuat.');
+        return redirect()->route('login')->with('success', 'Pendaftaran berhasil! Akun Anda sedang menunggu persetujuan dari administrator. Anda akan menerima notifikasi setelah akun disetujui.');
     }
 
     public function login(Request $request)
@@ -74,21 +78,43 @@ class AuthController extends Controller
             'password.required' => 'Password harus diisi',
         ]);
 
-        if (Auth::attempt($request->only('email', 'password'), $request->filled('remember'))) {
-            $request->session()->regenerate();
+        // Case-insensitive email lookup
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower($request->email)])->first();
 
-            Log::create([
-                'user_id' => Auth::id(),
-                'action' => 'login',
-                'description' => 'User ' . Auth::user()->name . ' berhasil login'
+        // Cek apakah email/username ditemukan
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'email' => 'Email tidak terdaftar dalam sistem.',
             ]);
-
-            return redirect()->intended(route('dashboard'));
         }
 
-        throw ValidationException::withMessages([
-            'email' => 'Username/Email atau password salah.',
+        // Cek apakah password benar
+        if (!Hash::check($request->password, $user->password)) {
+            throw ValidationException::withMessages([
+                'password' => 'Password yang Anda masukkan salah.',
+            ]);
+        }
+
+        // Cek apakah akun sudah disetujui
+        if (!$user->is_approved) {
+            throw ValidationException::withMessages([
+                'email' => 'Akun Anda belum disetujui oleh administrator. Silakan tunggu persetujuan atau hubungi admin.',
+            ]);
+        }
+
+        Auth::login($user, $request->filled('remember'));
+        $request->session()->regenerate();
+
+        // Record login history
+        LoginHistory::recordLogin($user, $request);
+
+        Log::create([
+            'user_id' => Auth::id(),
+            'action' => 'login',
+            'description' => 'User ' . Auth::user()->name . ' berhasil login'
         ]);
+
+        return redirect()->intended(route('dashboard'));
     }
 
     // Profile & Change Password
@@ -155,10 +181,15 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        $user = Auth::user();
+        
+        // Record logout history
+        LoginHistory::recordLogout($user, $request);
+
         Log::create([
-            'user_id' => Auth::id(),
+            'user_id' => $user->id,
             'action' => 'logout',
-            'description' => 'User ' . Auth::user()->name . ' logout'
+            'description' => 'User ' . $user->name . ' logout'
         ]);
 
         Auth::logout();
@@ -168,102 +199,98 @@ class AuthController extends Controller
         return redirect()->route('login');
     }
 
-    // Forgot Password
+    // ==================== PASSWORD RESET VIA EMAIL ====================
+
     public function showForgotPassword()
     {
         return view('auth.forgot-password');
     }
 
-    public function sendResetCode(Request $request)
+    public function sendResetLink(Request $request)
     {
         $request->validate([
-            'email_or_phone' => 'required',
+            'email' => 'required|email',
         ], [
-            'email_or_phone.required' => 'Email atau nomor HP harus diisi',
+            'email.required' => 'Email harus diisi',
+            'email.email' => 'Format email tidak valid',
         ]);
 
-        $input = $request->email_or_phone;
-        
-        // Cari user berdasarkan email atau phone
-        $user = User::where('email', $input)
-            ->orWhere('phone', $input)
-            ->first();
+        // Case-insensitive email lookup
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower($request->email)])->first();
 
         if (!$user) {
-            return back()->with('error', 'Email atau nomor HP tidak ditemukan.');
+            return back()->with('error', 'Email tidak terdaftar dalam sistem.');
         }
 
-        // Generate reset code
-        $code = $user->generateResetCode();
+        // Generate token
+        $token = Str::random(64);
 
-        // Simpan user id di session untuk verifikasi
-        session(['reset_user_id' => $user->id]);
+        // Delete existing token for this email
+        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
 
-        // Buat pesan WhatsApp
-        $message = "🔐 *KODE RESET PASSWORD*\n\n";
-        $message .= "Kode verifikasi Anda: *{$code}*\n\n";
-        $message .= "Kode ini berlaku selama 15 menit.\n";
-        $message .= "Jangan bagikan kode ini kepada siapapun.\n\n";
-        $message .= "_UPTD Puskesmas Karang Rejo_";
-
-        // Redirect ke halaman dengan link WhatsApp dan form verifikasi
-        return view('auth.verify-code', [
-            'user' => $user,
-            'whatsapp_link' => $user->getWhatsAppLink($message),
-            'code' => $code, // Hanya untuk development, hapus di production
-        ]);
-    }
-
-    public function showVerifyCode()
-    {
-        if (!session('reset_user_id')) {
-            return redirect()->route('password.request')->with('error', 'Silakan mulai proses reset password dari awal.');
-        }
-        
-        $user = User::find(session('reset_user_id'));
-        if (!$user) {
-            return redirect()->route('password.request')->with('error', 'User tidak ditemukan.');
-        }
-
-        return view('auth.verify-code', ['user' => $user]);
-    }
-
-    public function verifyCode(Request $request)
-    {
-        $request->validate([
-            'code' => 'required|digits:6',
-        ], [
-            'code.required' => 'Kode verifikasi harus diisi',
-            'code.digits' => 'Kode verifikasi harus 6 digit',
+        // Insert new token
+        DB::table('password_reset_tokens')->insert([
+            'email' => $request->email,
+            'token' => Hash::make($token),
+            'created_at' => Carbon::now()
         ]);
 
-        $user = User::find(session('reset_user_id'));
+        // Send email
+        $resetLink = route('password.reset.form', ['token' => $token, 'email' => $request->email]);
         
-        if (!$user) {
-            return redirect()->route('password.request')->with('error', 'Silakan mulai proses reset password dari awal.');
+        try {
+            Mail::send('emails.password-reset', ['resetLink' => $resetLink, 'user' => $user], function($message) use ($user) {
+                $message->to($user->email);
+                $message->subject('Reset Password - UPTD Puskesmas Karang Rejo');
+            });
+
+            Log::create([
+                'user_id' => $user->id,
+                'action' => 'password_reset_requested',
+                'description' => 'User ' . $user->name . ' meminta reset password via email'
+            ]);
+
+            return back()->with('success', 'Link reset password telah dikirim ke email Anda. Silakan cek inbox atau folder spam.');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal mengirim email. Silakan coba lagi atau hubungi administrator. Error: ' . $e->getMessage());
         }
-
-        if (!$user->verifyResetCode($request->code)) {
-            return back()->with('error', 'Kode verifikasi salah atau sudah kadaluarsa.');
-        }
-
-        session(['reset_code_verified' => true]);
-
-        return redirect()->route('password.reset.form');
     }
 
-    public function showResetPassword()
+    public function showResetPassword(Request $request)
     {
-        if (!session('reset_user_id') || !session('reset_code_verified')) {
-            return redirect()->route('password.request')->with('error', 'Silakan mulai proses reset password dari awal.');
+        $token = $request->query('token');
+        $email = $request->query('email');
+
+        if (!$token || !$email) {
+            return redirect()->route('password.request')->with('error', 'Link reset password tidak valid.');
         }
 
-        return view('auth.reset-password');
+        // Verify token exists
+        $resetRecord = DB::table('password_reset_tokens')->where('email', $email)->first();
+
+        if (!$resetRecord) {
+            return redirect()->route('password.request')->with('error', 'Link reset password tidak valid atau sudah kadaluarsa.');
+        }
+
+        // Check if token is expired (60 minutes)
+        if (Carbon::parse($resetRecord->created_at)->addMinutes(60)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return redirect()->route('password.request')->with('error', 'Link reset password sudah kadaluarsa. Silakan minta link baru.');
+        }
+
+        // Verify token hash
+        if (!Hash::check($token, $resetRecord->token)) {
+            return redirect()->route('password.request')->with('error', 'Link reset password tidak valid.');
+        }
+
+        return view('auth.reset-password', ['token' => $token, 'email' => $email]);
     }
 
     public function resetPassword(Request $request)
     {
         $request->validate([
+            'token' => 'required',
+            'email' => 'required|email',
             'password' => 'required|min:6|confirmed',
         ], [
             'password.required' => 'Password baru harus diisi',
@@ -271,26 +298,112 @@ class AuthController extends Controller
             'password.confirmed' => 'Konfirmasi password tidak cocok',
         ]);
 
-        $user = User::find(session('reset_user_id'));
-        
+        $resetRecord = DB::table('password_reset_tokens')->where('email', $request->email)->first();
+
+        if (!$resetRecord) {
+            return back()->with('error', 'Token reset password tidak valid.');
+        }
+
+        if (Carbon::parse($resetRecord->created_at)->addMinutes(60)->isPast()) {
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+            return redirect()->route('password.request')->with('error', 'Token sudah kadaluarsa. Silakan minta link baru.');
+        }
+
+        if (!Hash::check($request->token, $resetRecord->token)) {
+            return back()->with('error', 'Token reset password tidak valid.');
+        }
+
+        $user = User::where('email', $request->email)->first();
+
         if (!$user) {
-            return redirect()->route('password.request')->with('error', 'Silakan mulai proses reset password dari awal.');
+            return back()->with('error', 'User tidak ditemukan.');
         }
 
         $user->password = Hash::make($request->password);
-        $user->clearResetCode();
         $user->save();
 
-        // Clear session
-        session()->forget(['reset_user_id', 'reset_code_verified']);
+        // Delete used token
+        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
 
         Log::create([
             'user_id' => $user->id,
-            'action' => 'reset_password',
-            'description' => 'User ' . $user->name . ' berhasil reset password'
+            'action' => 'password_reset_success',
+            'description' => 'User ' . $user->name . ' berhasil reset password via email'
         ]);
 
-        return redirect()->route('login')->with('success', 'Password berhasil diubah. Silakan login dengan password baru.');
+        return redirect()->route('login')->with('success', 'Password berhasil diubah! Silakan login dengan password baru Anda.');
+    }
+
+    // ==================== ADMIN: USER APPROVAL ====================
+
+    public function pendingUsers()
+    {
+        $pendingUsers = User::where('is_approved', false)
+            ->orderBy('created_at', 'desc')
+            ->paginate(15);
+
+        return view('auth.pending-users', compact('pendingUsers'));
+    }
+
+    public function approveUser($id)
+    {
+        $user = User::findOrFail($id);
+
+        if ($user->is_approved) {
+            return back()->with('error', 'User sudah disetujui sebelumnya.');
+        }
+
+        $user->approve(auth()->id());
+
+        Log::create([
+            'user_id' => auth()->id(),
+            'action' => 'user_approved',
+            'description' => 'Admin ' . auth()->user()->name . ' menyetujui akun ' . $user->name
+        ]);
+
+        // Send approval notification email
+        try {
+            Mail::send('emails.account-approved', ['user' => $user], function($message) use ($user) {
+                $message->to($user->email);
+                $message->subject('Akun Anda Telah Disetujui - UPTD Puskesmas Karang Rejo');
+            });
+        } catch (\Exception $e) {
+            // Email failed but approval succeeded
+        }
+
+        return back()->with('success', 'Akun ' . $user->name . ' berhasil disetujui.');
+    }
+
+    public function rejectUser($id)
+    {
+        $user = User::findOrFail($id);
+
+        if ($user->is_approved) {
+            return back()->with('error', 'Tidak dapat menolak user yang sudah disetujui.');
+        }
+
+        $userName = $user->name;
+        $userEmail = $user->email;
+
+        // Send rejection notification email before deleting
+        try {
+            Mail::send('emails.account-rejected', ['userName' => $userName], function($message) use ($userEmail) {
+                $message->to($userEmail);
+                $message->subject('Pendaftaran Akun Ditolak - UPTD Puskesmas Karang Rejo');
+            });
+        } catch (\Exception $e) {
+            // Email failed but rejection proceeds
+        }
+
+        $user->reject();
+
+        Log::create([
+            'user_id' => auth()->id(),
+            'action' => 'user_rejected',
+            'description' => 'Admin ' . auth()->user()->name . ' menolak pendaftaran ' . $userName
+        ]);
+
+        return back()->with('success', 'Pendaftaran ' . $userName . ' ditolak dan dihapus dari sistem.');
     }
 
     // API Methods
@@ -301,13 +414,21 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        // Case-insensitive email lookup
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower($request->email)])->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Email atau password salah'
             ], 401);
+        }
+
+        if (!$user->is_approved) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun belum disetujui oleh administrator'
+            ], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;

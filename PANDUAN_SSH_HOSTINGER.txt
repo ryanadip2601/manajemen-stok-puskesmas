@@ -1,0 +1,184 @@
+================================================================================
+PANDUAN AKSES SSH DI HOSTINGER
+================================================================================
+
+================================================================================
+METODE 1: SSH VIA TERMINAL HOSTINGER (PALING MUDAH)
+================================================================================
+
+LANGKAH-LANGKAH:
+
+1. Login ke Hostinger
+   - Buka https://www.hostinger.co.id (atau hostinger.com)
+   - Login dengan akun Anda
+
+2. Masuk ke hPanel
+   - Klik "Hosting" di menu atas
+   - Pilih domain/hosting yang ingin dikelola
+   - Klik "Kelola" atau "Manage"
+
+3. Cari Menu "Advanced"
+   - Di sidebar kiri, scroll ke bawah
+   - Cari bagian "Advanced" atau "Lanjutan"
+   - Klik "SSH Access" atau "Akses SSH"
+
+4. Aktifkan SSH (jika belum aktif)
+   - Klik tombol "Enable" atau "Aktifkan"
+   - Catat informasi yang muncul:
+     * Host: ssh.namadomain.com atau IP address
+     * Port: 22
+     * Username: u123456789 (contoh)
+     * Password: password hosting Anda
+
+5. Gunakan Browser SSH Terminal
+   - Di halaman SSH Access, klik "Browser terminal" atau "Terminal"
+   - Akan muncul terminal hitam di browser
+   - Anda sudah terkoneksi!
+
+================================================================================
+METODE 2: SSH VIA APLIKASI (PuTTY / Terminal)
+================================================================================
+
+A. UNTUK WINDOWS (Menggunakan PuTTY):
+
+1. Download PuTTY
+   - Buka https://www.putty.org/
+   - Download dan install PuTTY
+
+2. Buka PuTTY dan isi:
+   - Host Name: [IP atau hostname dari Hostinger]
+   - Port: 22
+   - Connection type: SSH
+   - Klik "Open"
+
+3. Login:
+   - Username: [username SSH dari Hostinger]
+   - Password: [password hosting Anda]
+
+B. UNTUK MAC/LINUX (Menggunakan Terminal):
+
+1. Buka Terminal
+
+2. Ketik perintah:
+   ssh username@hostname -p 22
+   
+   Contoh:
+   ssh u123456789@ssh.namadomain.com -p 22
+
+3. Masukkan password saat diminta
+
+================================================================================
+PERINTAH YANG HARUS DIJALANKAN SETELAH UPLOAD
+================================================================================
+
+Setelah terkoneksi SSH, jalankan perintah berikut SATU PER SATU:
+
+# 1. Masuk ke folder website
+cd public_html
+
+# 2. Cek apakah sudah di folder yang benar
+ls -la
+
+# 3. Jalankan migrasi database (PENTING!)
+php artisan migrate
+
+   - Jika muncul pertanyaan "Do you really wish to run this command? (yes/no)"
+   - Ketik: yes
+   - Tekan Enter
+
+# 4. Clear semua cache
+php artisan config:clear
+php artisan config:cache
+php artisan route:clear
+php artisan route:cache
+php artisan view:clear
+
+# 5. Set permission folder storage (jika ada error permission)
+chmod -R 775 storage
+chmod -R 775 bootstrap/cache
+
+# 6. Cek status aplikasi
+php artisan --version
+
+================================================================================
+ALTERNATIF: TANPA SSH (Via File Manager + Cron Job)
+================================================================================
+
+Jika SSH tidak tersedia di paket hosting Anda:
+
+OPSI A - Via File Manager:
+
+1. Buka File Manager di hPanel Hostinger
+2. Masuk ke folder public_html
+3. Buat file baru bernama "run_migrate.php"
+4. Isi dengan kode berikut:
+
+<?php
+// Jalankan sekali lalu HAPUS file ini!
+echo "<pre>";
+echo shell_exec('cd /home/u123456789/public_html && php artisan migrate --force 2>&1');
+echo shell_exec('cd /home/u123456789/public_html && php artisan config:cache 2>&1');
+echo shell_exec('cd /home/u123456789/public_html && php artisan view:clear 2>&1');
+echo "</pre>";
+?>
+
+5. Akses via browser: https://namadomain.com/run_migrate.php
+6. HAPUS file run_migrate.php setelah selesai! (PENTING untuk keamanan)
+
+OPSI B - Via Cron Job:
+
+1. Di hPanel, cari menu "Cron Jobs"
+2. Buat cron job baru:
+   - Command: cd /home/u123456789/public_html && php artisan migrate --force
+   - Schedule: Run once (atau setiap menit, lalu disable setelah jalan)
+3. Tunggu cron berjalan
+4. Hapus/disable cron job setelah selesai
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+ERROR: "Permission denied"
+SOLUSI: chmod -R 775 storage bootstrap/cache
+
+ERROR: "Class not found"
+SOLUSI: 
+php artisan config:clear
+composer dump-autoload
+
+ERROR: "Migration table already exists"
+SOLUSI: php artisan migrate:status (cek status dulu)
+
+ERROR: "SQLSTATE connection refused"
+SOLUSI: Cek config/database.php dan .env sudah benar
+
+ERROR: SSH tidak bisa connect
+SOLUSI: 
+- Pastikan SSH sudah diaktifkan di hPanel
+- Cek firewall/antivirus di komputer Anda
+- Gunakan Browser Terminal di Hostinger
+
+================================================================================
+CATATAN PENTING
+================================================================================
+
+1. BACKUP database sebelum migrate!
+   - Di hPanel > Databases > phpMyAdmin > Export
+
+2. Jangan share informasi SSH ke siapapun
+
+3. Setelah selesai, logout dari SSH:
+   exit
+
+4. Jika menggunakan file run_migrate.php, WAJIB HAPUS setelah selesai!
+
+================================================================================
+KONTAK SUPPORT HOSTINGER
+================================================================================
+
+Jika masih kesulitan:
+- Live Chat: https://www.hostinger.co.id (icon chat di kanan bawah)
+- Help Center: https://support.hostinger.com
+- Email: support@hostinger.com
+
+================================================================================

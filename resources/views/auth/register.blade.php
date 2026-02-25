@@ -24,9 +24,29 @@
         .btn-glow:hover {
             box-shadow: 0 0 30px rgba(34, 197, 94, 0.4);
         }
+        /* Mobile Responsive & Scrollable */
+        html, body {
+            height: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+        }
+        html {
+            height: -webkit-fill-available;
+        }
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+                align-items: flex-start;
+                padding-top: 1.5rem;
+                padding-bottom: 1.5rem;
+            }
+        }
     </style>
 </head>
-<body class="bg-pattern min-h-screen flex items-center justify-center p-4">
+<body class="bg-pattern min-h-screen flex items-center justify-center p-4 overflow-y-auto">
     <div class="w-full max-w-md">
         <!-- Logo & Title -->
         <div class="text-center mb-6">
@@ -42,6 +62,17 @@
             <div class="text-center mb-6">
                 <h3 class="text-xl font-bold text-white">Daftar Akun Pegawai</h3>
                 <p class="text-slate-400 text-sm mt-1">Isi data diri Anda untuk mendaftar</p>
+            </div>
+
+            <!-- Info Persetujuan Admin -->
+            <div class="bg-blue-500/20 border border-blue-500/50 text-blue-300 p-4 mb-6 rounded-xl">
+                <div class="flex items-start">
+                    <i class="fas fa-info-circle mt-0.5 mr-3"></i>
+                    <div class="text-sm">
+                        <p class="font-medium">Perlu Persetujuan Admin</p>
+                        <p class="mt-1 text-blue-200/80">Setelah mendaftar, akun Anda akan ditinjau oleh administrator sebelum dapat digunakan.</p>
+                    </div>
+                </div>
             </div>
 
             @if($errors->any())
@@ -103,26 +134,38 @@
                     <label class="block text-slate-400 text-sm font-medium mb-2">
                         <i class="fas fa-lock mr-2"></i>Password
                     </label>
-                    <input 
-                        type="password" 
-                        name="password"
-                        class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow"
-                        placeholder="Minimal 6 karakter"
-                        required
-                    >
+                    <div class="relative">
+                        <input 
+                            type="password" 
+                            name="password"
+                            id="password"
+                            class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow"
+                            placeholder="Minimal 6 karakter"
+                            required
+                        >
+                        <button type="button" onclick="togglePassword('password', 'toggleIcon1')" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-500 hover:text-slate-300 transition">
+                            <i class="fas fa-eye" id="toggleIcon1"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="mb-6">
                     <label class="block text-slate-400 text-sm font-medium mb-2">
                         <i class="fas fa-lock mr-2"></i>Konfirmasi Password
                     </label>
-                    <input 
-                        type="password" 
-                        name="password_confirmation"
-                        class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow"
-                        placeholder="Ulangi password"
-                        required
-                    >
+                    <div class="relative">
+                        <input 
+                            type="password" 
+                            name="password_confirmation"
+                            id="password_confirmation"
+                            class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow"
+                            placeholder="Ulangi password"
+                            required
+                        >
+                        <button type="button" onclick="togglePassword('password_confirmation', 'toggleIcon2')" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-500 hover:text-slate-300 transition">
+                            <i class="fas fa-eye" id="toggleIcon2"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <button 
@@ -147,5 +190,22 @@
             <p class="text-slate-500 text-sm">&copy; {{ date('Y') }} UPTD Puskesmas Karang Rejo</p>
         </div>
     </div>
+
+    <script>
+        function togglePassword(inputId, iconId) {
+            const password = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            
+            if (password.type === 'password') {
+                password.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                password.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+    </script>
 </body>
 </html>

@@ -12,7 +12,7 @@ class CategoryController extends Controller
     {
         $categories = Category::withCount('items')
             ->when($request->search, function ($query, $search) {
-                $query->where('name', 'ILIKE', "%{$search}%");
+                $query->where('name', 'LIKE', "%{$search}%");
             })
             ->latest()
             ->paginate(10);

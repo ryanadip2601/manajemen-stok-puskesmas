@@ -129,9 +129,38 @@
         .card-3d:hover {
             transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
         }
+        /* Mobile Responsive & Scrollable */
+        html, body {
+            height: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+        }
+        html {
+            height: -webkit-fill-available;
+        }
+        @media (max-height: 700px) {
+            .slide-up {
+                animation: none;
+                opacity: 1;
+            }
+            .float {
+                animation: none;
+            }
+        }
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+                align-items: flex-start;
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+            }
+        }
     </style>
 </head>
-<body class="bg-pattern min-h-screen flex items-center justify-center p-4 relative">
+<body class="bg-pattern min-h-screen flex items-center justify-center p-4 relative overflow-y-auto">
     <!-- Floating Particles -->
     <div class="particle" style="top: 10%; left: 10%; animation-delay: 0s;"></div>
     <div class="particle" style="top: 20%; left: 80%; animation-delay: 1s;"></div>
@@ -164,11 +193,29 @@
                 <p class="text-slate-400 text-sm mt-1">Silakan masuk ke SIMBAR</p>
             </div>
 
-            @if($errors->any())
+            @if(session('success'))
+                <div class="bg-green-500/20 border border-green-500/50 text-green-300 p-4 mb-6 rounded-xl">
+                    <div class="flex items-start">
+                        <i class="fas fa-check-circle mt-0.5 mr-3"></i>
+                        <p class="text-sm">{{ session('success') }}</p>
+                    </div>
+                </div>
+            @endif
+
+            @if($errors->has('email'))
                 <div class="bg-red-500/20 border border-red-500/50 text-red-300 p-4 mb-6 rounded-xl">
                     <div class="flex items-center">
-                        <i class="fas fa-exclamation-circle mr-3"></i>
-                        <p>{{ $errors->first() }}</p>
+                        <i class="fas fa-user-times mr-3"></i>
+                        <p>{{ $errors->first('email') }}</p>
+                    </div>
+                </div>
+            @endif
+
+            @if($errors->has('password'))
+                <div class="bg-amber-500/20 border border-amber-500/50 text-amber-300 p-4 mb-6 rounded-xl">
+                    <div class="flex items-center">
+                        <i class="fas fa-key mr-3"></i>
+                        <p>{{ $errors->first('password') }}</p>
                     </div>
                 </div>
             @endif
@@ -178,19 +225,19 @@
                 
                 <div class="mb-6">
                     <label class="block text-slate-400 text-sm font-medium mb-2">
-                        <i class="fas fa-user mr-2"></i>Username
+                        <i class="fas fa-envelope mr-2"></i>Alamat Email
                     </label>
                     <div class="relative">
                         <input 
-                            type="text" 
+                            type="email" 
                             name="email" 
                             value="{{ old('email') }}"
-                            class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-4 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow transition-all"
-                            placeholder="Masukkan username"
+                            class="w-full bg-slate-700/50 border border-slate-600 rounded-xl px-4 py-4 pr-12 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 input-glow transition-all"
+                            placeholder="Masukkan alamat email"
                             required
                         >
                         <div class="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-500">
-                            <i class="fas fa-user"></i>
+                            <i class="fas fa-envelope"></i>
                         </div>
                     </div>
                 </div>

@@ -79,11 +79,24 @@ php artisan serve
 
 Akses: http://localhost:8000
 
+## 🌐 Deployment ke Hostinger
+
+1. ZIP folder project
+2. Upload ke `public_html` di Hostinger
+3. Buat database MySQL di hPanel
+4. Edit `.env` dengan kredensial database
+5. Akses `https://domainanda.com/setup.php` untuk setup database
+6. Hapus `setup.php` setelah selesai
+
+Lihat **[HOSTINGER_DEPLOY_GUIDE.md](HOSTINGER_DEPLOY_GUIDE.md)** untuk panduan lengkap.
+
 ## 📚 Dokumentasi
 
-1. **[DATABASE_DESIGN.md](DATABASE_DESIGN.md)** - Desain database lengkap dengan ERD
-2. **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - Dokumentasi REST API lengkap
-3. **[INSTALLATION.md](INSTALLATION.md)** - Panduan instalasi step-by-step
+1. **[HOSTINGER_DEPLOY_GUIDE.md](HOSTINGER_DEPLOY_GUIDE.md)** - Panduan deploy ke Hostinger
+2. **[DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md)** - Checklist deployment
+3. **[DATABASE_DESIGN.md](DATABASE_DESIGN.md)** - Desain database lengkap dengan ERD
+4. **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - Dokumentasi REST API lengkap
+5. **[INSTALLATION.md](INSTALLATION.md)** - Panduan instalasi lokal
 
 ## 🎨 Screenshots
 
@@ -99,8 +112,14 @@ Form transaksi yang user-friendly dengan validasi otomatis.
 ## 🔐 Login Default
 
 Setelah seeding data:
-- Email: `admin@puskesmas.com`
-- Password: `password123`
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@admin.com | password |
+| Admin Gudang | gudang@admin.com | password |
+| Staff | staff@admin.com | password |
+
+**⚠️ Segera ganti password setelah login!**
 
 ## 📁 Struktur Project
 
