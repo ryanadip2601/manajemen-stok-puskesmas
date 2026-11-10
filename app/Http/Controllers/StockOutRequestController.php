@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\StockOutRequest;
 use App\Models\Item;
 use App\Models\Log;
+use App\Models\StockOutRequest;
 use App\Services\StockService;
-use Illuminate\Http\Request;
 use Exception;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class StockOutRequestController extends Controller
 {
@@ -30,49 +31,97 @@ class StockOutRequestController extends Controller
         return view('stock_out_requests.staff.index', compact('requests'));
     }
 
-    public function staffCreate()
+    public function staffCreate(Request $request)
     {
         $items = Item::with(['category', 'unit'])
             ->where('stock', '>', 0)
+            ->orderBy('name')
             ->get();
-        return view('stock_out_requests.staff.create', compact('items'));
+
+        $selectedItemId = null;
+        if ($request->filled('item_id')) {
+            $requestedItemId = (int) $request->item_id;
+            $selectedItemId = $items->contains('id', $requestedItemId) ? $requestedItemId : null;
+        }
+
+        return view('stock_out_requests.staff.create', compact('items', 'selectedItemId'));
     }
 
     public function staffStore(Request $request)
     {
         $validated = $request->validate([
-            'item_id' => 'required|exists:items,id',
-            'quantity' => 'required|integer|min:1',
-            'notes' => 'nullable|string|max:500',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|distinct|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.notes' => 'nullable|string|max:500',
         ], [
-            'item_id.required' => 'Barang harus dipilih',
-            'quantity.required' => 'Jumlah harus diisi',
-            'quantity.min' => 'Jumlah minimal 1',
+            'items.required' => 'Tambahkan minimal 1 barang untuk diajukan.',
+            'items.min' => 'Tambahkan minimal 1 barang untuk diajukan.',
+            'items.*.item_id.required' => 'Barang harus dipilih.',
+            'items.*.item_id.distinct' => 'Setiap barang hanya boleh dipilih satu kali dalam satu pengajuan.',
+            'items.*.quantity.required' => 'Jumlah harus diisi.',
+            'items.*.quantity.min' => 'Jumlah minimal 1.',
         ]);
 
-        $item = Item::findOrFail($validated['item_id']);
+        $requestedItems = collect($validated['items'])
+            ->filter(fn ($item) => ! empty($item['item_id']))
+            ->values();
 
-        if ($validated['quantity'] > $item->stock) {
-            return back()->withInput()->with('error', 'Jumlah melebihi stok yang tersedia (' . $item->stock . ')');
+        if ($requestedItems->isEmpty()) {
+            return back()->withInput()->with('error', 'Tambahkan minimal 1 barang untuk diajukan.');
         }
 
-        $stockRequest = StockOutRequest::create([
-            'user_id' => auth()->id(),
-            'item_id' => $validated['item_id'],
-            'quantity' => $validated['quantity'],
-            'notes' => $validated['notes'],
-            'status' => 'pending',
-            'request_date' => now()->toDateString(),
-        ]);
+        $items = Item::with('unit')
+            ->whereIn('id', $requestedItems->pluck('item_id'))
+            ->get()
+            ->keyBy('id');
 
-        Log::create([
-            'user_id' => auth()->id(),
-            'action' => 'stock_request_created',
-            'description' => 'User ' . auth()->user()->name . ' mengajukan permintaan pengambilan ' . $item->name . ' sebanyak ' . $validated['quantity']
-        ]);
+        foreach ($requestedItems as $index => $requestedItem) {
+            $item = $items->get((int) $requestedItem['item_id']);
 
-        return redirect()->route('stock-request.staff.index')
-            ->with('success', 'Permintaan pengambilan barang berhasil diajukan. Mohon tunggu persetujuan dari Admin Gudang.');
+            if (! $item) {
+                return back()->withInput()->with('error', 'Data barang pada baris ke-'.($index + 1).' tidak ditemukan.');
+            }
+
+            if ((int) $requestedItem['quantity'] > (int) $item->stock) {
+                return back()->withInput()->with(
+                    'error',
+                    'Jumlah permintaan untuk "'.$item->name.'" melebihi stok yang tersedia ('.$item->stock.' '.($item->unit->symbol ?? '').').'
+                );
+            }
+        }
+
+        $createdCount = 0;
+
+        DB::transaction(function () use ($requestedItems, $items, &$createdCount) {
+            foreach ($requestedItems as $requestedItem) {
+                $item = $items->get((int) $requestedItem['item_id']);
+
+                StockOutRequest::create([
+                    'user_id' => auth()->id(),
+                    'item_id' => $item->id,
+                    'quantity' => (int) $requestedItem['quantity'],
+                    'notes' => $requestedItem['notes'] ?? null,
+                    'status' => 'pending',
+                    'request_date' => now()->toDateString(),
+                ]);
+
+                Log::create([
+                    'user_id' => auth()->id(),
+                    'action' => 'stock_request_created',
+                    'description' => 'User '.auth()->user()->name.' mengajukan permintaan pengambilan '.$item->name.' sebanyak '.(int) $requestedItem['quantity'],
+                ]);
+
+                $createdCount++;
+            }
+        });
+
+        return redirect()->route('stock-request.staff.index')->with(
+            'success',
+            $createdCount > 1
+                ? 'Permintaan pengambilan berhasil diajukan untuk '.$createdCount.' barang. Mohon tunggu persetujuan dari Admin Gudang.'
+                : 'Permintaan pengambilan barang berhasil diajukan. Mohon tunggu persetujuan dari Admin Gudang.'
+        );
     }
 
     public function staffCancel($id)
@@ -81,7 +130,7 @@ class StockOutRequestController extends Controller
             ->where('id', $id)
             ->firstOrFail();
 
-        if (!$request->isPending()) {
+        if (! $request->isPending()) {
             return back()->with('error', 'Hanya permintaan dengan status "Menunggu" yang dapat dibatalkan.');
         }
 
@@ -92,7 +141,7 @@ class StockOutRequestController extends Controller
         Log::create([
             'user_id' => auth()->id(),
             'action' => 'stock_request_cancelled',
-            'description' => 'User ' . auth()->user()->name . ' membatalkan permintaan pengambilan ' . $request->item->name
+            'description' => 'User '.auth()->user()->name.' membatalkan permintaan pengambilan '.$request->item->name,
         ]);
 
         return back()->with('success', 'Permintaan berhasil dibatalkan.');
@@ -103,7 +152,7 @@ class StockOutRequestController extends Controller
     public function checklistIndex(Request $request)
     {
         $status = $request->get('status', 'pending');
-        
+
         $query = StockOutRequest::with(['user', 'item.category', 'item.unit', 'processedByUser']);
 
         if ($status !== 'all') {
@@ -124,37 +173,51 @@ class StockOutRequestController extends Controller
 
     public function approve($id)
     {
-        $request = StockOutRequest::with('item')->findOrFail($id);
+        $stockRequest = StockOutRequest::with(['item', 'user'])->findOrFail($id);
 
-        if (!$request->isPending()) {
+        if (! $stockRequest->isPending()) {
             return back()->with('error', 'Permintaan ini sudah diproses sebelumnya.');
         }
 
         // Check stock availability
-        if ($request->quantity > $request->item->stock) {
-            return back()->with('error', 'Stok tidak mencukupi. Stok tersedia: ' . $request->item->stock);
+        if ($stockRequest->quantity > $stockRequest->item->stock) {
+            return back()->with('error', 'Stok tidak mencukupi. Stok tersedia: '.$stockRequest->item->stock);
         }
 
-        $request->update([
-            'status' => 'approved',
-            'processed_by' => auth()->id(),
-            'processed_at' => now(),
-        ]);
+        try {
+            DB::transaction(function () use ($stockRequest) {
+                $this->stockService->addStockOut([
+                    'item_id' => $stockRequest->item_id,
+                    'quantity' => $stockRequest->quantity,
+                    'date' => now()->toDateString(),
+                    'notes' => 'Auto selesai dari checklist oleh '.auth()->user()->name.' untuk '.$stockRequest->user->name.($stockRequest->notes ? ' - '.$stockRequest->notes : ''),
+                ]);
 
-        Log::create([
-            'user_id' => auth()->id(),
-            'action' => 'stock_request_approved',
-            'description' => auth()->user()->name . ' menyetujui permintaan pengambilan ' . $request->item->name . ' oleh ' . $request->user->name
-        ]);
+                $stockRequest->update([
+                    'status' => 'completed',
+                    'processed_by' => auth()->id(),
+                    'processed_at' => now(),
+                    'pickup_date' => now()->toDateString(),
+                ]);
 
-        return back()->with('success', 'Permintaan berhasil disetujui. Pegawai dapat mengambil barang.');
+                Log::create([
+                    'user_id' => auth()->id(),
+                    'action' => 'stock_request_approved_completed',
+                    'description' => auth()->user()->name.' menyetujui dan menyelesaikan pengambilan '.$stockRequest->item->name.' oleh '.$stockRequest->user->name.' (Qty: '.$stockRequest->quantity.')',
+                ]);
+            });
+
+            return back()->with('success', 'Permintaan berhasil disetujui dan langsung diselesaikan. Stok telah dikurangi.');
+        } catch (Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     public function reject(Request $request, $id)
     {
         $stockRequest = StockOutRequest::with('item')->findOrFail($id);
 
-        if (!$stockRequest->isPending()) {
+        if (! $stockRequest->isPending()) {
             return back()->with('error', 'Permintaan ini sudah diproses sebelumnya.');
         }
 
@@ -172,7 +235,7 @@ class StockOutRequestController extends Controller
         Log::create([
             'user_id' => auth()->id(),
             'action' => 'stock_request_rejected',
-            'description' => auth()->user()->name . ' menolak permintaan pengambilan ' . $stockRequest->item->name . ' oleh ' . $stockRequest->user->name
+            'description' => auth()->user()->name.' menolak permintaan pengambilan '.$stockRequest->item->name.' oleh '.$stockRequest->user->name,
         ]);
 
         return back()->with('success', 'Permintaan berhasil ditolak.');
@@ -182,13 +245,13 @@ class StockOutRequestController extends Controller
     {
         $request = StockOutRequest::with('item')->findOrFail($id);
 
-        if (!$request->isApproved()) {
+        if (! $request->isApproved()) {
             return back()->with('error', 'Hanya permintaan yang sudah disetujui yang dapat diselesaikan.');
         }
 
         // Check stock one more time
         if ($request->quantity > $request->item->stock) {
-            return back()->with('error', 'Stok tidak mencukupi. Stok tersedia: ' . $request->item->stock);
+            return back()->with('error', 'Stok tidak mencukupi. Stok tersedia: '.$request->item->stock);
         }
 
         try {
@@ -197,7 +260,7 @@ class StockOutRequestController extends Controller
                 'item_id' => $request->item_id,
                 'quantity' => $request->quantity,
                 'date' => now()->toDateString(),
-                'notes' => 'Pengambilan oleh ' . $request->user->name . ($request->notes ? ' - ' . $request->notes : ''),
+                'notes' => 'Pengambilan oleh '.$request->user->name.($request->notes ? ' - '.$request->notes : ''),
             ]);
 
             $request->update([
@@ -208,7 +271,7 @@ class StockOutRequestController extends Controller
             Log::create([
                 'user_id' => auth()->id(),
                 'action' => 'stock_request_completed',
-                'description' => auth()->user()->name . ' menyelesaikan pengambilan ' . $request->item->name . ' oleh ' . $request->user->name . ' (Qty: ' . $request->quantity . ')'
+                'description' => auth()->user()->name.' menyelesaikan pengambilan '.$request->item->name.' oleh '.$request->user->name.' (Qty: '.$request->quantity.')',
             ]);
 
             return back()->with('success', 'Pengambilan barang berhasil diselesaikan. Stok telah dikurangi.');
@@ -221,7 +284,7 @@ class StockOutRequestController extends Controller
     {
         $request = StockOutRequest::findOrFail($id);
 
-        if (!$request->isApproved()) {
+        if (! $request->isApproved()) {
             return back()->with('error', 'Hanya permintaan yang sudah disetujui yang dapat dibatalkan persetujuannya.');
         }
 
@@ -234,7 +297,7 @@ class StockOutRequestController extends Controller
         Log::create([
             'user_id' => auth()->id(),
             'action' => 'stock_request_undo_approval',
-            'description' => auth()->user()->name . ' membatalkan persetujuan pengambilan ' . $request->item->name
+            'description' => auth()->user()->name.' membatalkan persetujuan pengambilan '.$request->item->name,
         ]);
 
         return back()->with('success', 'Persetujuan berhasil dibatalkan. Status kembali ke "Menunggu".');
@@ -279,7 +342,7 @@ class StockOutRequestController extends Controller
                 'created_at_human' => $latestPending->created_at->diffForHumans(),
                 'created_at_formatted' => $latestPending->created_at->format('H:i, d M Y'),
             ] : null,
-            'requests' => $recentRequests
+            'requests' => $recentRequests,
         ]);
     }
 }

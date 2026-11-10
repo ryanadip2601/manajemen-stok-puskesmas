@@ -122,7 +122,7 @@ class ItemController extends Controller
         ]);
 
         if ($request->foto_tipe === 'url' && $request->filled('foto_url')) {
-            $validated['photo'] = $request->foto_url;
+            $validated['photo'] = $this->normalizePhotoUrl($request->foto_url);
         } elseif ($request->foto_tipe === 'upload' && $request->hasFile('photo')) {
             $file = $request->file('photo');
             $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
@@ -204,7 +204,7 @@ class ItemController extends Controller
                 if ($item->photo && !str_starts_with($item->photo, 'http') && Storage::disk('public')->exists($item->photo)) {
                     Storage::disk('public')->delete($item->photo);
                 }
-                $validated['photo'] = $request->foto_url;
+                $validated['photo'] = $this->normalizePhotoUrl($request->foto_url);
             } elseif ($request->foto_tipe === 'upload' && $request->hasFile('photo')) {
                 // Hapus foto lokal lama jika ada
                 if ($item->photo && !str_starts_with($item->photo, 'http') && Storage::disk('public')->exists($item->photo)) {
@@ -437,5 +437,35 @@ class ItemController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal mengimpor file: ' . $e->getMessage());
         }
+    }
+
+    private function normalizePhotoUrl(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        $cleanUrl = trim($url);
+        $parts = parse_url($cleanUrl);
+
+        if (!is_array($parts)) {
+            return $cleanUrl;
+        }
+
+        parse_str($parts['query'] ?? '', $query);
+
+        if (!empty($query['imgurl']) && filter_var($query['imgurl'], FILTER_VALIDATE_URL)) {
+            return $query['imgurl'];
+        }
+
+        if (!empty($query['mediaurl']) && filter_var($query['mediaurl'], FILTER_VALIDATE_URL)) {
+            return $query['mediaurl'];
+        }
+
+        if (!empty($query['url']) && filter_var($query['url'], FILTER_VALIDATE_URL)) {
+            return $query['url'];
+        }
+
+        return $cleanUrl;
     }
 }

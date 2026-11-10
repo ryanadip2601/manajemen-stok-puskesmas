@@ -17,34 +17,11 @@ New-Item -ItemType Directory -Path $dest | Out-Null
 # === A. FILE YANG DIMODIFIKASI ===
 Write-Host "`n[1/8] Menyalin Controllers..." -ForegroundColor Yellow
 
-# Controllers yang dimodifikasi
-$controllers = @(
-    "AuthController.php",
-    "CategoryController.php",
-    "ItemController.php",
-    "ReportController.php",
-    "StockInController.php",
-    "StockOutController.php"
-)
-New-Item -ItemType Directory -Path "$dest\app\Http\Controllers" -Force | Out-Null
-foreach ($file in $controllers) {
-    Copy-Item "$source\app\Http\Controllers\$file" "$dest\app\Http\Controllers\" -Force
-}
-
-# Controllers baru
-$newControllers = @(
-    "BarangAsetController.php",
-    "KategoriAsetController.php",
-    "PemeliharaanAsetController.php",
-    "PenyusutanController.php",
-    "RuanganController.php",
-    "StockOutRequestController.php",
-    "UserMonitorController.php",
-    "UsulanPenerimaanController.php"
-)
-foreach ($file in $newControllers) {
-    if (Test-Path "$source\app\Http\Controllers\$file") {
-        Copy-Item "$source\app\Http\Controllers\$file" "$dest\app\Http\Controllers\" -Force
+# Copy semua controllers agar tidak ada file terbaru yang terlewat
+if (Test-Path "$source\app\Http\Controllers") {
+    New-Item -ItemType Directory -Path "$dest\app\Http\Controllers" -Force | Out-Null
+    Get-ChildItem "$source\app\Http\Controllers\*.php" | ForEach-Object {
+        Copy-Item $_.FullName "$dest\app\Http\Controllers\" -Force
     }
 }
 
@@ -79,6 +56,15 @@ if (Test-Path "$source\app\Services") {
     }
 }
 
+# Providers
+Write-Host "[4.5/8] Menyalin Providers..." -ForegroundColor Yellow
+if (Test-Path "$source\app\Providers") {
+    New-Item -ItemType Directory -Path "$dest\app\Providers" -Force | Out-Null
+    Get-ChildItem "$source\app\Providers\*.php" | ForEach-Object {
+        Copy-Item $_.FullName "$dest\app\Providers\" -Force
+    }
+}
+
 Write-Host "[5/8] Menyalin Config..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Path "$dest\config" -Force | Out-Null
 Copy-Item "$source\config\database.php" "$dest\config\" -Force
@@ -108,8 +94,10 @@ $viewFolders = @(
     "kategori-aset",
     "layouts",
     "pemeliharaan",
+    "permintaan-barang",
     "penyusutan",
     "reports",
+    "sbbk",
     "ruangan",
     "stock_in",
     "stock_out",

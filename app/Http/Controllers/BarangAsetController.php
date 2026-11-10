@@ -7,7 +7,7 @@ use App\Models\KategoriAset;
 use App\Models\Ruangan;
 use App\Models\Log;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class BarangAsetController extends Controller
 {
@@ -282,6 +282,85 @@ class BarangAsetController extends Controller
 
         return redirect()->route('barang-aset.index')
             ->with('success', 'Barang aset berhasil dihapus');
+    }
+
+    public function bulkAction(Request $request)
+    {
+        $validated = $request->validate([
+            'aset_ids' => 'required|array|min:1',
+            'aset_ids.*' => 'integer|exists:barang_aset,id',
+            'bulk_action' => 'required|in:delete,move',
+            'target_ruangan_id' => 'nullable|integer|exists:ruangan,id',
+        ], [
+            'aset_ids.required' => 'Pilih minimal 1 aset terlebih dahulu.',
+            'aset_ids.min' => 'Pilih minimal 1 aset terlebih dahulu.',
+            'bulk_action.required' => 'Pilih aksi massal terlebih dahulu.',
+            'target_ruangan_id.exists' => 'Ruangan tujuan tidak valid.',
+        ]);
+
+        $asetList = BarangAset::with('ruangan')
+            ->whereIn('id', $validated['aset_ids'])
+            ->get();
+
+        if ($asetList->isEmpty()) {
+            return back()->with('error', 'Data aset tidak ditemukan.');
+        }
+
+        if ($validated['bulk_action'] === 'move') {
+            if (empty($validated['target_ruangan_id'])) {
+                return back()->with('error', 'Pilih ruangan tujuan terlebih dahulu.');
+            }
+
+            $targetRuangan = Ruangan::active()->find($validated['target_ruangan_id']);
+            if (!$targetRuangan) {
+                return back()->with('error', 'Ruangan tujuan tidak aktif atau tidak ditemukan.');
+            }
+
+            $dipindahkan = 0;
+            $dilewati = 0;
+
+            foreach ($asetList as $aset) {
+                if ((int) $aset->ruangan_id === (int) $targetRuangan->id) {
+                    $dilewati++;
+                    continue;
+                }
+
+                $aset->update(['ruangan_id' => $targetRuangan->id]);
+                $dipindahkan++;
+            }
+
+            Log::create([
+                'user_id' => auth()->id(),
+                'action' => 'barang_aset_bulk_moved',
+                'description' => "Pindah massal {$dipindahkan} aset ke ruangan {$targetRuangan->nama_ruangan}" . ($dilewati > 0 ? " ({$dilewati} aset dilewati)" : ''),
+            ]);
+
+            return back()->with('success', "Berhasil memindahkan {$dipindahkan} aset ke ruangan {$targetRuangan->nama_ruangan}" . ($dilewati > 0 ? ". {$dilewati} aset sudah berada di ruangan tersebut." : '.'));
+        }
+
+        $jumlahHapus = 0;
+
+        DB::transaction(function () use ($asetList, &$jumlahHapus) {
+            foreach ($asetList as $aset) {
+                if ($aset->foto && !str_starts_with($aset->foto, 'http')) {
+                    $fullPath = public_path($aset->foto);
+                    if (file_exists($fullPath)) {
+                        unlink($fullPath);
+                    }
+                }
+
+                $aset->delete();
+                $jumlahHapus++;
+            }
+        });
+
+        Log::create([
+            'user_id' => auth()->id(),
+            'action' => 'barang_aset_bulk_deleted',
+            'description' => "Hapus massal {$jumlahHapus} aset",
+        ]);
+
+        return back()->with('success', "Berhasil menghapus {$jumlahHapus} aset.");
     }
 
     // Generate kode aset via AJAX

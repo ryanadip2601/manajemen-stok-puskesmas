@@ -60,7 +60,7 @@ class PermintaanBarangController extends Controller
         return view('permintaan-barang.index', compact('permintaan', 'stats'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $ruanganList = Ruangan::active()->orderBy('nama_ruangan')->get();
 
@@ -78,7 +78,25 @@ class PermintaanBarangController extends Controller
             ->orderBy('name', 'asc')
             ->get();
 
-        return view('permintaan-barang.create', compact('ruanganList', 'allItems', 'lowStockItems'));
+        $selectedItemForJs = null;
+        if ($request->filled('item_id')) {
+            $selectedItem = Item::with(['category', 'unit'])->find((int) $request->item_id);
+            if ($selectedItem) {
+                $selectedItemForJs = [
+                    'id' => $selectedItem->id,
+                    'name' => $selectedItem->name,
+                    'code' => $selectedItem->code,
+                    'stock' => (int) $selectedItem->stock,
+                    'minimum_stock' => (int) $selectedItem->minimum_stock,
+                    'category' => $selectedItem->category->name ?? '-',
+                    'unit' => $selectedItem->unit->name ?? '-',
+                    'unit_symbol' => $selectedItem->unit->symbol ?? '',
+                    'is_low_stock' => (int) $selectedItem->stock <= (int) $selectedItem->minimum_stock,
+                ];
+            }
+        }
+
+        return view('permintaan-barang.create', compact('ruanganList', 'allItems', 'lowStockItems', 'selectedItemForJs'));
     }
 
     public function store(Request $request)
@@ -92,11 +110,17 @@ class PermintaanBarangController extends Controller
                 'jumlah' => 'required|integer|min:1|max:99999',
                 'prioritas' => 'required|in:rendah,sedang,tinggi',
                 'keterangan' => 'nullable|string|max:2000',
+                'foto_tipe' => 'nullable|in:upload,url',
+                'foto_upload' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+                'foto_url' => 'nullable|url|max:2000',
             ], [
                 'item_id.required' => 'Barang harus dipilih',
                 'jumlah.required' => 'Jumlah wajib diisi',
                 'jumlah.min' => 'Jumlah minimal 1',
                 'prioritas.required' => 'Prioritas wajib dipilih',
+                'foto_upload.image' => 'File harus berupa gambar',
+                'foto_upload.max' => 'Ukuran gambar maksimal 5MB',
+                'foto_url.url' => 'URL gambar tidak valid',
             ]);
 
             $item = Item::findOrFail($validated['item_id']);
@@ -119,6 +143,8 @@ class PermintaanBarangController extends Controller
 
             DB::beginTransaction();
             try {
+                [$fotoBarang, $tipeFoto] = $this->resolveFotoBarang($request);
+
                 $permintaan = PermintaanBarang::create([
                     'user_id' => auth()->id(),
                     'tipe' => PermintaanBarang::TIPE_RESTOK,
@@ -127,6 +153,8 @@ class PermintaanBarangController extends Controller
                     'jumlah' => $validated['jumlah'],
                     'prioritas' => $validated['prioritas'],
                     'keterangan' => $validated['keterangan'] ?? null,
+                    'foto_barang' => $fotoBarang,
+                    'tipe_foto_barang' => $tipeFoto,
                     'tanggal_permintaan' => now(),
                     'status' => 'pending',
                 ]);
@@ -186,18 +214,7 @@ class PermintaanBarangController extends Controller
 
             DB::beginTransaction();
             try {
-                $fotoBarang = null;
-                $tipeFoto = null;
-
-                if ($request->foto_tipe === 'upload' && $request->hasFile('foto_upload')) {
-                    $file = $request->file('foto_upload');
-                    $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
-                    $fotoBarang = $file->storeAs('permintaan_barang', $filename, 'public');
-                    $tipeFoto = 'upload';
-                } elseif ($request->foto_tipe === 'url' && $request->filled('foto_url')) {
-                    $fotoBarang = $request->foto_url;
-                    $tipeFoto = 'url';
-                }
+                [$fotoBarang, $tipeFoto] = $this->resolveFotoBarang($request);
 
                 $permintaan = PermintaanBarang::create([
                     'user_id' => auth()->id(),
@@ -280,13 +297,17 @@ class PermintaanBarangController extends Controller
                 'jumlah' => 'required|integer|min:1|max:99999',
                 'prioritas' => 'required|in:rendah,sedang,tinggi',
                 'keterangan' => 'nullable|string|max:2000',
+                'foto_tipe' => 'nullable|in:upload,url',
+                'foto_upload' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+                'foto_url' => 'nullable|url|max:2000',
+                'hapus_foto' => 'nullable|boolean',
             ]);
 
             $item = Item::findOrFail($validated['item_id']);
 
             DB::beginTransaction();
             try {
-                $permintaan->update([
+                $updateData = [
                     'tipe' => PermintaanBarang::TIPE_RESTOK,
                     'item_id' => $validated['item_id'],
                     'nama_barang' => $item->name,
@@ -296,7 +317,10 @@ class PermintaanBarangController extends Controller
                     'keterangan' => $validated['keterangan'] ?? null,
                     'status' => 'pending',
                     'permintaan_revisi' => null,
-                ]);
+                ];
+
+                $this->applyFotoBarangUpdate($request, $permintaan, $updateData);
+                $permintaan->update($updateData);
 
                 Log::create([
                     'user_id' => auth()->id(),
@@ -340,29 +364,7 @@ class PermintaanBarangController extends Controller
                     'permintaan_revisi' => null,
                 ];
 
-                if ($request->boolean('hapus_foto')) {
-                    if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
-                        Storage::disk('public')->delete($permintaan->foto_barang);
-                    }
-                    $updateData['foto_barang'] = null;
-                    $updateData['tipe_foto_barang'] = null;
-                } else {
-                    if ($request->foto_tipe === 'upload' && $request->hasFile('foto_upload')) {
-                        if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
-                            Storage::disk('public')->delete($permintaan->foto_barang);
-                        }
-                        $file = $request->file('foto_upload');
-                        $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
-                        $updateData['foto_barang'] = $file->storeAs('permintaan_barang', $filename, 'public');
-                        $updateData['tipe_foto_barang'] = 'upload';
-                    } elseif ($request->foto_tipe === 'url' && $request->filled('foto_url')) {
-                        if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
-                            Storage::disk('public')->delete($permintaan->foto_barang);
-                        }
-                        $updateData['foto_barang'] = $request->foto_url;
-                        $updateData['tipe_foto_barang'] = 'url';
-                    }
-                }
+                $this->applyFotoBarangUpdate($request, $permintaan, $updateData);
 
                 $permintaan->update($updateData);
 
@@ -411,6 +413,85 @@ class PermintaanBarangController extends Controller
             DB::rollBack();
             return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
+    }
+
+    private function resolveFotoBarang(Request $request): array
+    {
+        if ($request->foto_tipe === 'upload' && $request->hasFile('foto_upload')) {
+            $file = $request->file('foto_upload');
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            return [$file->storeAs('permintaan_barang', $filename, 'public'), 'upload'];
+        }
+
+        if ($request->foto_tipe === 'url' && $request->filled('foto_url')) {
+            return [$this->normalizeFotoUrl($request->foto_url), 'url'];
+        }
+
+        return [null, null];
+    }
+
+    private function applyFotoBarangUpdate(Request $request, PermintaanBarang $permintaan, array &$updateData): void
+    {
+        if ($request->boolean('hapus_foto')) {
+            if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
+                Storage::disk('public')->delete($permintaan->foto_barang);
+            }
+
+            $updateData['foto_barang'] = null;
+            $updateData['tipe_foto_barang'] = null;
+            return;
+        }
+
+        if ($request->foto_tipe === 'upload' && $request->hasFile('foto_upload')) {
+            if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
+                Storage::disk('public')->delete($permintaan->foto_barang);
+            }
+
+            $file = $request->file('foto_upload');
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $updateData['foto_barang'] = $file->storeAs('permintaan_barang', $filename, 'public');
+            $updateData['tipe_foto_barang'] = 'upload';
+            return;
+        }
+
+        if ($request->foto_tipe === 'url' && $request->filled('foto_url')) {
+            if ($permintaan->tipe_foto_barang === 'upload' && $permintaan->foto_barang) {
+                Storage::disk('public')->delete($permintaan->foto_barang);
+            }
+
+            $updateData['foto_barang'] = $this->normalizeFotoUrl($request->foto_url);
+            $updateData['tipe_foto_barang'] = 'url';
+        }
+    }
+
+    private function normalizeFotoUrl(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        $cleanUrl = trim($url);
+        $parts = parse_url($cleanUrl);
+
+        if (!is_array($parts)) {
+            return $cleanUrl;
+        }
+
+        parse_str($parts['query'] ?? '', $query);
+
+        if (!empty($query['imgurl']) && filter_var($query['imgurl'], FILTER_VALIDATE_URL)) {
+            return $query['imgurl'];
+        }
+
+        if (!empty($query['mediaurl']) && filter_var($query['mediaurl'], FILTER_VALIDATE_URL)) {
+            return $query['mediaurl'];
+        }
+
+        if (!empty($query['url']) && filter_var($query['url'], FILTER_VALIDATE_URL)) {
+            return $query['url'];
+        }
+
+        return $cleanUrl;
     }
 
     // ==================== ADMIN METHODS ====================

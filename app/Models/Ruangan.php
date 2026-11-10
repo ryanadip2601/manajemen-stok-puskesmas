@@ -38,6 +38,16 @@ class Ruangan extends Model
         return $this->hasMany(UsulanPenerimaanBarang::class);
     }
 
+    public function usulanPermintaan()
+    {
+        return $this->hasMany(UsulanPermintaanBarang::class);
+    }
+
+    public function permintaanBarang()
+    {
+        return $this->hasMany(PermintaanBarang::class);
+    }
+
     // Scopes
     public function scopeActive($query)
     {

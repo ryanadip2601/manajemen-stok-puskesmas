@@ -4,13 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Models\Ruangan;
 use App\Models\Log;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class RuanganController extends Controller
 {
     public function index(Request $request)
     {
-        $ruangan = Ruangan::withCount('barangAset')
+        $ruangan = Ruangan::withCount([
+                'barangAset',
+                'pemeliharaan',
+                'usulanPenerimaan',
+                'usulanPermintaan',
+                'permintaanBarang',
+            ])
             ->when($request->search, function ($query, $search) {
                 $query->where('nama_ruangan', 'like', "%{$search}%")
                       ->orWhere('lokasi', 'like', "%{$search}%");
@@ -95,13 +103,43 @@ class RuanganController extends Controller
     public function destroy($id)
     {
         $ruangan = Ruangan::findOrFail($id);
-        
-        if ($ruangan->barangAset()->count() > 0) {
-            return back()->with('error', 'Ruangan tidak dapat dihapus karena masih memiliki aset');
+
+        $jumlahAset = $ruangan->barangAset()->count();
+        if ($jumlahAset > 0) {
+            return back()->with('error', 'Ruangan tidak dapat dihapus karena masih memiliki aset.');
+        }
+
+        if ($ruangan->nama_ruangan === 'Arsip Ruangan Dihapus') {
+            return back()->with('error', 'Ruangan arsip sistem tidak dapat dihapus.');
         }
 
         $namaRuangan = $ruangan->nama_ruangan;
-        $ruangan->delete();
+
+        try {
+            DB::transaction(function () use ($ruangan) {
+                $ruanganArsip = Ruangan::firstOrCreate(
+                    ['nama_ruangan' => 'Arsip Ruangan Dihapus'],
+                    [
+                        'lokasi' => 'Sistem',
+                        'keterangan' => 'Ruangan penampung referensi historis saat ruangan asli dihapus.',
+                        'is_active' => false,
+                    ]
+                );
+
+                if ((int) $ruanganArsip->id === (int) $ruangan->id) {
+                    throw new QueryException('', [], new \Exception('Ruangan arsip tidak valid untuk pengalihan.'));
+                }
+
+                $ruangan->pemeliharaan()->update(['ruangan_id' => $ruanganArsip->id]);
+                $ruangan->usulanPenerimaan()->update(['ruangan_id' => $ruanganArsip->id]);
+                $ruangan->usulanPermintaan()->update(['ruangan_id' => $ruanganArsip->id]);
+                $ruangan->permintaanBarang()->update(['ruangan_id' => $ruanganArsip->id]);
+
+                $ruangan->delete();
+            });
+        } catch (QueryException $e) {
+            return back()->with('error', 'Ruangan tidak dapat dihapus karena masih digunakan oleh data lain.');
+        }
 
         Log::create([
             'user_id' => auth()->id(),
