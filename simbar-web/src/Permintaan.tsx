@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { PhotoField, StoredPhoto } from './media';
 import { rpc } from './supabase';
 
 type Status = 'pending' | 'diproses' | 'disetujui' | 'ditolak' | 'revisi' | 'tersedia' | 'dibaca';
@@ -16,7 +17,7 @@ type Detail = {
   id: number; code: string; tipe: Tipe; status: Status; itemId: number | null; name: string; roomId: number | null; room: string | null;
   jumlah: number; prioritas: Prioritas; keterangan: string | null; date: string; catatanAdmin: string | null;
   alasanPenolakan: string | null; permintaanRevisi: string | null; requestedBy: string; verifiedBy: string | null;
-  foto: string | null; hasUploadedPhoto: boolean; mine: boolean;
+  foto: string | null; fotoRef: string | null; hasUploadedPhoto: boolean; mine: boolean;
   item: { name: string; code: string; stock: number; minimum: number; unit: string } | null;
   createdItem: { code: string; name: string } | null;
 };
@@ -157,8 +158,8 @@ function DetailView({ detail }: { detail: Detail }) {
     {detail.catatanAdmin && <div className="wide"><dt>Catatan admin</dt><dd>{detail.catatanAdmin}</dd></div>}
     {detail.verifiedBy && <div><dt>Diverifikasi oleh</dt><dd>{detail.verifiedBy}</dd></div>}
     {detail.createdItem && <div><dt>Data barang dibuat</dt><dd>{detail.createdItem.name} ({detail.createdItem.code})</dd></div>}
-    {detail.foto && <div className="wide"><dt>Foto barang</dt><dd><img className="request-photo" src={detail.foto} alt={'Foto ' + detail.name}
-      referrerPolicy="no-referrer" loading="lazy" /></dd></div>}
+    {(detail.foto ?? detail.fotoRef) && <div className="wide"><dt>Foto barang</dt><dd>
+      <StoredPhoto reference={(detail.foto ?? detail.fotoRef)!} alt={'Foto ' + detail.name} /></dd></div>}
     {detail.hasUploadedPhoto && <div className="wide"><dt>Foto barang</dt><dd>Foto unggahan lama belum dipindahkan.</dd></div>}
   </dl>;
 }
@@ -168,20 +169,22 @@ function RequestForm({ options, editing, busy, onSubmit, onCancel }: {
   onSubmit: (values: Record<string, unknown>) => void; onCancel: () => void;
 }) {
   const [tipe, setTipe] = useState<Tipe>(editing?.tipe ?? 'restok');
+  const original = editing?.foto ?? editing?.fotoRef ?? null;
+  const [photo, setPhoto] = useState<string | null>(original);
   const restockable = options.items.filter((item) => item.low || item.id === editing?.itemId);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const foto = text(data, 'foto');
     onSubmit({
       permintaan_id: editing?.id ?? null, request_tipe: tipe,
       item_ref: tipe === 'restok' ? Number(data.get('item')) : null,
       request_name: tipe === 'barang_baru' ? text(data, 'name') : null,
       room_ref: tipe === 'barang_baru' && data.get('room') ? Number(data.get('room')) : null,
       request_jumlah: Number(data.get('jumlah')), request_prioritas: text(data, 'prioritas'),
-      request_keterangan: text(data, 'keterangan'), foto_url: foto ? normalizePhotoUrl(foto) : null,
-      remove_photo: data.get('remove_photo') === 'on',
+      request_keterangan: text(data, 'keterangan'),
+      foto_url: photo && photo !== original ? (photo.startsWith('media:') ? photo : normalizePhotoUrl(photo)) : null,
+      remove_photo: !photo && original !== null,
     });
   }
 
@@ -209,8 +212,7 @@ function RequestForm({ options, editing, busy, onSubmit, onCancel }: {
       <option value="rendah">Rendah</option><option value="sedang">Sedang</option><option value="tinggi">Tinggi</option>
     </select></label>
     <label className="wide">Keterangan<textarea name="keterangan" rows={2} maxLength={2000} defaultValue={editing?.keterangan ?? ''} /></label>
-    <label className="wide">Link foto barang (opsional)<input name="foto" type="url" maxLength={2000} placeholder="https://…" /></label>
-    {editing && (editing.foto || editing.hasUploadedPhoto) && <label className="wide inline"><input type="checkbox" name="remove_photo" /> Hapus foto saat ini</label>}
+    <PhotoField label="Foto barang (opsional)" value={photo} onChange={setPhoto} allowLink />
     <div className="form-actions wide">
       <button className="primary" type="submit" disabled={busy}>{busy ? 'Mengirim…' : editing ? 'Kirim ulang' : 'Ajukan'}</button>
       <button className="secondary" type="button" onClick={onCancel}>Batal</button>

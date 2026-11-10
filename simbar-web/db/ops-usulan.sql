@@ -1,6 +1,6 @@
 -- Usulan penerimaan barang (every approved role) and warehouse verification. Safe to re-run.
 -- Ports UsulanPenerimaanController: approving an usulan creates the barang aset. Requires ops-core.sql.
--- foto_barang keeps Laravel's JSON array of photo links (at most five).
+-- foto_barang keeps Laravel's JSON array of photos (at most five): links, uploaded "media:" references, or legacy paths.
 
 BEGIN;
 
@@ -139,7 +139,17 @@ BEGIN
         RAISE check_violation USING MESSAGE = 'Estimasi harga tidak boleh negatif.';
     ELSIF jsonb_typeof(photos) <> 'array' OR jsonb_array_length(photos) > 5 OR EXISTS (
         SELECT 1 FROM jsonb_array_elements(photos) p
-        WHERE jsonb_typeof(p) <> 'string' OR p #>> '{}' !~ '^https?://[^\s]+$' OR char_length(p #>> '{}') > 2048) THEN
+        WHERE jsonb_typeof(p) <> 'string' OR (p #>> '{}' !~ '^https?://[^\s]+$' AND p #>> '{}' !~ '^media:[0-9a-f]{64}$'
+              AND p #>> '{}' !~ '^uploads/') OR char_length(p #>> '{}') > 2048) THEN
+        RAISE check_violation USING MESSAGE = 'Maksimal 5 link foto yang valid.';
+    END IF;
+
+    PERFORM simbar.check_media_reference(actor.id, p #>> '{}') FROM jsonb_array_elements(photos) p
+    WHERE p #>> '{}' LIKE 'media:%' AND (usulan_id IS NULL OR NOT EXISTS (SELECT 1 FROM simbar.usulan_penerimaan_barang u
+        WHERE u.id = usulan_id AND u.foto_barang ~ '^\s*\[' AND u.foto_barang::jsonb ? (p #>> '{}')));
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(photos) p WHERE p #>> '{}' LIKE 'uploads/%'
+        AND NOT EXISTS (SELECT 1 FROM simbar.usulan_penerimaan_barang u WHERE u.id = usulan_id AND u.foto_barang ~ '^\s*\['
+            AND u.foto_barang::jsonb ? (p #>> '{}'))) THEN
         RAISE check_violation USING MESSAGE = 'Maksimal 5 link foto yang valid.';
     END IF;
 

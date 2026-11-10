@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { downloadCsv, stamp } from './csv';
+import { StoredPhoto, uploadPhoto } from './media';
 import { rpc } from './supabase';
 
 type Status = 'pending' | 'diproses' | 'disetujui' | 'ditolak' | 'revisi';
@@ -127,7 +128,7 @@ function Pages({ page, total, go }: { page: number; total: number; go: (page: nu
 }
 
 function DetailView({ detail }: { detail: Detail }) {
-  const links = detail.photos.filter((photo) => /^https?:\/\//.test(photo));
+  const shown = detail.photos.filter((photo) => !photo.startsWith('uploads/'));
   return <dl className="detail-list">
     <div><dt>Kode</dt><dd>{detail.code}</dd></div>
     <div><dt>Status</dt><dd><span className={'badge ' + detail.status}>{statusLabels[detail.status]}</span></dd></div>
@@ -149,8 +150,8 @@ function DetailView({ detail }: { detail: Detail }) {
     {detail.verifiedBy && <div><dt>Diverifikasi oleh</dt><dd>{detail.verifiedBy}</dd></div>}
     {detail.aset && <div><dt>Barang aset dibuat</dt><dd>{detail.aset.name} ({detail.aset.code})</dd></div>}
     {detail.photos.length > 0 && <div className="wide"><dt>Foto barang</dt><dd className="photo-row">
-      {links.map((photo) => <img key={photo} className="request-photo" src={photo} alt={'Foto ' + detail.name} referrerPolicy="no-referrer" loading="lazy" />)}
-      {links.length < detail.photos.length && <span>{detail.photos.length - links.length} foto unggahan lama belum dipindahkan.</span>}
+      {shown.map((photo) => <StoredPhoto key={photo} reference={photo} alt={'Foto ' + detail.name} />)}
+      {shown.length < detail.photos.length && <span>{detail.photos.length - shown.length} foto unggahan lama belum dipindahkan.</span>}
     </dd></div>}
   </dl>;
 }
@@ -160,6 +161,22 @@ function UsulanForm({ options, editing, busy, onSubmit, onCancel }: {
 }) {
   const [photos, setPhotos] = useState<string[]>(editing?.photos ?? []);
   const [draft, setDraft] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [problem, setProblem] = useState('');
+
+  async function addFile(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setProblem('');
+    try {
+      const reference = await uploadPhoto(file);
+      setPhotos((current) => [...current, reference].slice(0, 5));
+    } catch (error) {
+      setProblem((error as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -203,11 +220,15 @@ function UsulanForm({ options, editing, busy, onSubmit, onCancel }: {
     <label className="wide">Spesifikasi<textarea name="spesifikasi" rows={2} maxLength={1000} defaultValue={editing?.spesifikasi ?? ''} /></label>
     <label className="wide">Keterangan<textarea name="keterangan" rows={2} maxLength={2000} defaultValue={editing?.keterangan ?? ''} /></label>
     <fieldset className="wide choice">
-      <legend>Link foto barang (maks. 5)</legend>
+      <legend>Foto barang (maks. 5)</legend>
       {photos.map((photo) => <div className="photo-link" key={photo}>
-        <span>{/^https?:\/\//.test(photo) ? photo : 'Foto unggahan lama'}</span>
+        {photo.startsWith('uploads/') ? <span>Foto unggahan lama</span> : <StoredPhoto reference={photo} alt="Foto barang" />}
         <button className="secondary" type="button" onClick={() => setPhotos(photos.filter((entry) => entry !== photo))}>Hapus</button>
       </div>)}
+      {photos.length < 5 && <label className="file-button secondary">{uploading ? 'Mengunggah…' : 'Ambil / pilih foto'}
+        <input type="file" accept="image/*" capture="environment" disabled={uploading}
+          onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /></label>}
+      {problem && <p className="notice" role="alert">{problem}</p>}
       {photos.length < 5 && <div className="filters">
         <input type="url" maxLength={2048} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="https://…" aria-label="Link foto baru" />
         <button className="secondary" type="button" disabled={!/^https?:\/\/\S+$/.test(draft.trim())}

@@ -83,7 +83,8 @@ BEGIN
             'catatanAdmin', p.catatan_admin, 'alasanPenolakan', p.alasan_penolakan, 'permintaanRevisi', p.permintaan_revisi,
             'requestedBy', req.name, 'verifiedBy', v.name, 'verifiedAt', p.verified_at,
             'foto', CASE WHEN p.tipe_foto_barang = 'url' THEN p.foto_barang END,
-            'hasUploadedPhoto', p.tipe_foto_barang = 'upload' AND p.foto_barang IS NOT NULL,
+            'fotoRef', CASE WHEN p.foto_barang LIKE 'media:%' THEN p.foto_barang END,
+            'hasUploadedPhoto', p.tipe_foto_barang = 'upload' AND p.foto_barang IS NOT NULL AND p.foto_barang NOT LIKE 'media:%',
             'item', CASE WHEN i.id IS NOT NULL THEN jsonb_build_object('name', i.name, 'code', i.code, 'stock', i.stock,
                 'minimum', i.minimum_stock, 'unit', u.symbol) END,
             'createdItem', (SELECT jsonb_build_object('code', c.code, 'name', c.name) FROM simbar.items c WHERE c.id = p.created_item_id),
@@ -104,7 +105,7 @@ END;
 $function$;
 
 -- permintaan_id NULL submits a new request; otherwise the owner edits a pending/revisi request,
--- which goes back to pending. Photos are links (foto_url); remove_photo clears the current photo.
+-- which goes back to pending. foto_url is a link or an uploaded "media:" reference; remove_photo clears the photo.
 CREATE OR REPLACE FUNCTION public.simbar_permintaan_save(
     permintaan_id bigint, request_tipe text, item_ref bigint, request_name text, room_ref bigint,
     request_jumlah integer, request_prioritas text, request_keterangan text DEFAULT NULL,
@@ -132,8 +133,12 @@ BEGIN
         RAISE check_violation USING MESSAGE = 'Jumlah minimal 1.';
     ELSIF char_length(coalesce(request_keterangan, '')) > 2000 THEN
         RAISE check_violation USING MESSAGE = 'Keterangan maksimal 2000 karakter.';
-    ELSIF foto_url IS NOT NULL AND (foto_url !~ '^https?://[^\s]+$' OR char_length(foto_url) > 2000) THEN
+    ELSIF foto_url IS NOT NULL AND ((foto_url !~ '^https?://[^\s]+$' AND foto_url !~ '^media:[0-9a-f]{64}$') OR char_length(foto_url) > 2000) THEN
         RAISE check_violation USING MESSAGE = 'URL gambar tidak valid.';
+    END IF;
+
+    IF foto_url LIKE 'media:%' THEN
+        PERFORM simbar.check_media_reference(actor.id, foto_url);
     END IF;
 
     IF permintaan_id IS NOT NULL THEN
@@ -188,7 +193,7 @@ BEGIN
         INSERT INTO simbar.permintaan_barang (kode_permintaan, user_id, tipe, item_id, nama_barang, ruangan_id, jumlah,
             prioritas, keterangan, tanggal_permintaan, status, foto_barang, tipe_foto_barang, created_at, updated_at)
         VALUES (code, actor.id, request_tipe, item_ref, request_name, room_ref, request_jumlah, request_prioritas,
-            request_keterangan, simbar.local_today(), 'pending', foto_url, CASE WHEN foto_url IS NOT NULL THEN 'url' END,
+            request_keterangan, simbar.local_today(), 'pending', foto_url, CASE WHEN foto_url LIKE 'media:%' THEN 'upload' WHEN foto_url IS NOT NULL THEN 'url' END,
             simbar.local_now(), simbar.local_now());
         PERFORM simbar.write_log(actor.id, CASE request_tipe WHEN 'restok' THEN 'permintaan_barang_restok_created' ELSE 'permintaan_barang_baru_created' END,
             'User ' || actor.name || ' mengajukan ' || CASE request_tipe WHEN 'restok' THEN 'restok barang: ' ELSE 'permintaan barang baru: ' END
@@ -200,7 +205,7 @@ BEGIN
         ruangan_id = room_ref, jumlah = request_jumlah, prioritas = request_prioritas, keterangan = request_keterangan,
         status = 'pending', permintaan_revisi = NULL, updated_at = simbar.local_now(),
         foto_barang = CASE WHEN remove_photo THEN NULL WHEN foto_url IS NOT NULL THEN foto_url ELSE foto_barang END,
-        tipe_foto_barang = CASE WHEN remove_photo THEN NULL WHEN foto_url IS NOT NULL THEN 'url' ELSE tipe_foto_barang END
+        tipe_foto_barang = CASE WHEN remove_photo THEN NULL WHEN foto_url LIKE 'media:%' THEN 'upload' WHEN foto_url IS NOT NULL THEN 'url' ELSE tipe_foto_barang END
     WHERE id = permintaan_id;
     PERFORM simbar.write_log(actor.id, 'permintaan_barang_updated', 'User ' || actor.name || ' memperbarui permintaan: ' || current.kode_permintaan);
     RETURN current.kode_permintaan;

@@ -173,3 +173,27 @@ button, input, select, textarea { font: inherit; }
 .photo-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .photo-link { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid #d3e2d8; background: #fff; border-radius: 9px; padding: 6px 6px 6px 10px; }
 .photo-link span { overflow-wrap: anywhere; font-size: .86rem; }
+
+.metrics.compact { margin: 12px 0 8px; }
+.metrics.compact dd { font-size: clamp(1.3rem, 2.4vw, 1.8rem); }
+.metric dd.small { font-size: clamp(1rem, 1.8vw, 1.3rem); }
+.asset-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; margin: 14px 0 16px; align-items: end; }
+.asset-filter label { display: grid; gap: 6px; font-weight: 650; }
+.asset-filter input, .asset-filter select { width: 100%; border: 1px solid #bfcfc5; border-radius: 9px; padding: 9px 11px; background: #fff; font-weight: 400; }
+.asset-filter .wide { grid-column: 1 / -1; }
+.asset-filter label.inline { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.asset-filter label.inline input { width: auto; }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin: 0 0 12px; background: #fff7e0; border: 1px solid #f0dca0; border-radius: 12px; }
+.bulk-bar select { border: 1px solid #bfcfc5; border-radius: 9px; padding: 9px 11px; background: #fff; }
+.plain-list { margin: 4px 0 0; padding-left: 18px; }
+.plain-list li + li { margin-top: 6px; }
+.file-button { position: relative; display: inline-flex; align-items: center; justify-content: center; justify-self: start; cursor: pointer; }
+.file-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.file-button:focus-within { outline: 3px solid #148776; outline-offset: 3px; }
+.photo-field .photo-row img { max-height: 200px; }
+.photo-link .request-photo { max-height: 90px; max-width: 140px; }
+.badge.kondisi-baik, .badge.status-selesai { background: #e4f5ea; color: #155c3b; }
+.badge.kondisi-rusak_ringan, .badge.status-menunggu { background: #fff4d6; color: #6f4f00; }
+.badge.kondisi-rusak_berat, .badge.status-rusak { background: #fbe9e3; color: #8e3b24; }
+.badge.status-proses { background: #e1eefc; color: #1f4c7a; }
+@media (max-width: 720px) { .asset-filter { grid-template-columns: 1fr 1fr; } }

@@ -27,7 +27,7 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -176,6 +176,77 @@ try {
   await assert.rejects(db.query(`SELECT public.simbar_usulan_act($1, 'reject', 'x')`, [usulanId]), /sudah diverifikasi/);
   await as(STAFF);
   await assert.rejects(db.query('SELECT public.simbar_usulan_cancel($1)', [usulanId]), /tidak dapat dibatalkan/);
+
+  // Uploaded photos: only the uploader may attach a fresh "media:" reference; visibility follows the record.
+  const hex = (n) => n.toString(16).padStart(64, '0');
+  await as(STAFF);
+  const staffPhoto = (await one(`SELECT public.simbar_media_register($1, $2, 1, 1000, $3) AS r`,
+    ['simbar-uploads/' + hex(1), 'a'.repeat(32), 'b'.repeat(64)])).r;
+  assert.equal(staffPhoto, 'media:' + hex(1));
+  await assert.rejects(db.query(`SELECT public.simbar_media_register('simbar-hostinger/' || $1, $2, 1, 1000, $3)`,
+    [hex(2), 'a'.repeat(32), 'b'.repeat(64)]), /tidak valid/);
+  assert.ok((await one('SELECT public.simbar_media_lookup($1) AS m', [staffPhoto])).m.publicId.endsWith(hex(1)));
+  await as(ADMIN);
+  assert.equal((await one('SELECT public.simbar_media_lookup($1) AS m', [staffPhoto])).m, null);
+  const adminPhoto = (await one(`SELECT public.simbar_media_register($1, $2, 1, 2000, $3) AS r`,
+    ['simbar-uploads/' + hex(3), 'c'.repeat(32), 'd'.repeat(64)])).r;
+
+  // Barang aset, ruangan and kategori aset.
+  const kategoriAset = (await one(`SELECT public.simbar_kategori_aset_save(NULL, $1) AS id`,
+    [JSON.stringify({ nama_kategori: 'Zuji Alat', golongan: 'peralatan_mesin', umur_manfaat: 5 })])).id;
+  const ruang = (await one(`SELECT public.simbar_ruangan_save(NULL, 'Ruang Uji', 'Lantai 1', NULL, true) AS id`)).id;
+  const ruang2 = (await one(`SELECT public.simbar_ruangan_save(NULL, 'Ruang Uji 2', NULL, NULL, true) AS id`)).id;
+  await assert.rejects(db.query(`SELECT public.simbar_ruangan_save(NULL, 'Ruang Uji', NULL, NULL, true)`), /sudah ada/);
+  const nextCode = (await one('SELECT public.simbar_aset_next_code($1) AS c', [kategoriAset])).c;
+  assert.match(nextCode, /^ZUJ-\d{4}-0001$/);
+  const asetForm = { kode_aset: nextCode, nama_aset: 'Tensimeter Uji', kategori_aset_id: kategoriAset, ruangan_id: ruang,
+    kondisi: 'rusak_berat', tanggal_masuk: '2025-03-01', jumlah: 1, harga_perolehan: 500000, foto: staffPhoto };
+  await assert.rejects(db.query('SELECT public.simbar_aset_save(NULL, $1)', [JSON.stringify(asetForm)]), /Unggah ulang/);
+  const asetId = (await one('SELECT public.simbar_aset_save(NULL, $1) AS id', [JSON.stringify({ ...asetForm, foto: adminPhoto })])).id;
+  const savedAset = await one('SELECT tahun_perolehan, butuh_perbaikan, foto FROM simbar.barang_aset WHERE id = $1', [asetId]);
+  assert.deepEqual(savedAset, { tahun_perolehan: 2025, butuh_perbaikan: true, foto: adminPhoto });
+  await assert.rejects(db.query('SELECT public.simbar_aset_save(NULL, $1)', [JSON.stringify({ ...asetForm, foto: null })]), /Kode aset sudah ada/);
+  await db.query('SELECT public.simbar_aset_save($1, $2)', [asetId, JSON.stringify({ ...asetForm, kondisi: 'baik', foto: undefined })]);
+  assert.equal((await one('SELECT foto FROM simbar.barang_aset WHERE id = $1', [asetId])).foto, adminPhoto, 'omitted foto keeps the photo');
+  const moved = (await one('SELECT public.simbar_aset_move($1, $2) AS m', [[asetId], ruang2])).m;
+  assert.deepEqual([moved.moved, moved.skipped], [1, 0]);
+  await assert.rejects(db.query('SELECT public.simbar_ruangan_delete($1)', [ruang2]), /masih memiliki aset/);
+  await assert.rejects(db.query('SELECT public.simbar_kategori_aset_delete($1)', [kategoriAset]), /masih memiliki aset/);
+  const asetList = (await one(`SELECT public.simbar_aset_list($1, 1) AS l`, [JSON.stringify({ search: 'Tensimeter Uji' })])).l;
+  assert.equal(asetList.total, 1);
+
+  // Pemeliharaan: staff reports (aset flagged for repair), warehouse finishes (aset back to baik).
+  await as(STAFF);
+  assert.ok((await one('SELECT public.simbar_aset_get($1) AS a', [asetId])).a.kode_aset === nextCode);
+  await assert.rejects(db.query('SELECT public.simbar_aset_save($1, $2)', [asetId, JSON.stringify(asetForm)]), /Akses ditolak/);
+  const repair = (await one('SELECT public.simbar_pemeliharaan_save(NULL, $1) AS id', [JSON.stringify({ barang_aset_id: asetId,
+    ruangan_id: ruang2, tanggal_pemeliharaan: '2026-11-10', jenis_pemeliharaan: 'perbaikan', deskripsi_masalah: 'Selang bocor',
+    teknisi: 'Teknisi Uji', lampiran_foto: staffPhoto })])).id;
+  assert.equal((await one('SELECT butuh_perbaikan FROM simbar.barang_aset WHERE id = $1', [asetId])).butuh_perbaikan, true);
+  assert.equal((await one(`SELECT public.simbar_pemeliharaan_list('{}', 1) AS l`)).l.counts.total, 1, 'staff see only their reports');
+  await assert.rejects(db.query(`SELECT public.simbar_pemeliharaan_status($1, 'selesai')`, [repair]), /Akses ditolak/);
+  await as(ADMIN);
+  assert.equal((await one('SELECT public.simbar_media_lookup($1) AS m', [staffPhoto])).m.publicId.endsWith(hex(1)), true,
+    'warehouse sees photos attached to maintenance');
+  await db.query(`SELECT public.simbar_pemeliharaan_status($1, 'rusak')`, [repair]);
+  assert.equal((await one('SELECT kondisi FROM simbar.barang_aset WHERE id = $1', [asetId])).kondisi, 'rusak_berat');
+  await db.query(`SELECT public.simbar_pemeliharaan_status($1, 'selesai', 'Selang diganti')`, [repair]);
+  const fixed = await one(`SELECT a.kondisi, a.butuh_perbaikan, p.tanggal_selesai IS NOT NULL AS done, p.tindakan_perbaikan
+    FROM simbar.pemeliharaan_aset p JOIN simbar.barang_aset a ON a.id = p.barang_aset_id WHERE p.id = $1`, [repair]);
+  assert.deepEqual(fixed, { kondisi: 'baik', butuh_perbaikan: false, done: true, tindakan_perbaikan: 'Selang diganti' });
+  await db.query('SELECT public.simbar_pemeliharaan_delete($1)', [repair]);
+  assert.equal((await one('SELECT public.simbar_aset_delete($1) AS n', [[asetId]])).n, 1);
+  await db.query('SELECT public.simbar_ruangan_delete($1)', [ruang]);
+  await db.query('SELECT public.simbar_kategori_aset_delete($1)', [kategoriAset]);
+
+  // Permintaan accepts an uploaded photo of its owner.
+  await as(STAFF);
+  const ownPhoto = (await one(`SELECT public.simbar_media_register($1, $2, 1, 1000, $3) AS r`,
+    ['simbar-uploads/' + hex(4), 'e'.repeat(32), 'f'.repeat(64)])).r;
+  const withPhoto = (await one(`SELECT public.simbar_permintaan_save(NULL, 'barang_baru', NULL, 'Barang Foto Uji', NULL, 1, 'rendah', NULL, $1) AS c`, [ownPhoto])).c;
+  const photoRow = await one('SELECT tipe_foto_barang, foto_barang FROM simbar.permintaan_barang WHERE kode_permintaan = $1', [withPhoto]);
+  assert.deepEqual(photoRow, { tipe_foto_barang: 'upload', foto_barang: ownPhoto });
+  await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');
