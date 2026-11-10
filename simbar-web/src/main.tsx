@@ -1,9 +1,11 @@
 import type { Session } from '@supabase/supabase-js';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
 import { Assets } from './Aset';
 import { Pemeliharaan } from './Pemeliharaan';
+import { Laporan } from './Laporan';
+import { Overview } from './Overview';
 import { Penyusutan } from './Penyusutan';
 import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
@@ -21,7 +23,6 @@ type Summary = {
   photos: Photo[];
 };
 const roles = { admin: 'Administrator', admin_gudang: 'Admin Gudang', staff: 'Staf' };
-const number = new Intl.NumberFormat('id-ID');
 
 async function api(session: Session, signal: AbortSignal, query?: Record<string, string>) {
   const path = query ? '/api/summary?' + new URLSearchParams(query) : '/api/summary';
@@ -129,9 +130,7 @@ function Login() {
 
 function Dashboard({ session }: { session: Session }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan'>('summary');
-  const [kind, setKind] = useState<Photo['kind']>('asset');
-  const [photo, setPhoto] = useState<Photo | null>(null);
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users'>('summary');
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -150,15 +149,12 @@ function Dashboard({ session }: { session: Session }) {
   </section>;
   if (!state.summary) return <p role="status">Memuat ringkasan SIMBAR…</p>;
 
-  const { profile, stats, photos } = state.summary;
-  const selectedPhotos = photos.filter((entry) => entry.kind === kind);
+  const { profile } = state.summary;
   const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
   const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['aset', 'Barang aset'], ['pemeliharaan', 'Pemeliharaan'],
     ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang'], ['usulan', 'Usulan penerimaan']];
   if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['penyusutan', 'Penyusutan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
-  const metrics = [
-    ['Jenis barang', stats.items], ['Total stok', stats.stock], ['Aset tercatat', stats.assets], ['Foto terhubung', stats.photos],
-  ] as const;
+  if (profile.role === 'admin') menu.push(['laporan', 'Laporan']);
 
   return <>
     <section className="dashboard-intro">
@@ -173,6 +169,7 @@ function Dashboard({ session }: { session: Session }) {
     </nav>
     <RestockNotices />
     {section === 'aset' ? <Assets warehouse={warehouse} />
+      : section === 'laporan' ? <Laporan />
       : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
       : section === 'pickup' ? <MyPickups />
@@ -183,57 +180,10 @@ function Dashboard({ session }: { session: Session }) {
       : section === 'checklist' ? <Checklist />
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
-      : section !== 'summary' ? <Inventory key={section} kind={section} session={session} request={api} /> : <>
-    <dl className="metrics">{metrics.map(([label, count]) =>
-      <div className="metric" key={label}><dt>{label}</dt><dd>{number.format(count)}</dd></div>)}</dl>
-    <section className="panel">
-      <h2>Lampiran inventaris</h2>
-      <p>Pilih foto aset atau pemeliharaan dari data cadangan.</p>
-      <div className="filters" role="group" aria-label="Jenis lampiran">
-        <button className="secondary" aria-pressed={kind === 'asset'} onClick={() => { setKind('asset'); setPhoto(null); }}>Foto aset</button>
-        <button className="secondary" aria-pressed={kind === 'maintenance'} onClick={() => { setKind('maintenance'); setPhoto(null); }}>Foto pemeliharaan</button>
-      </div>
-      {photo && <PhotoViewer key={photo.kind + ':' + photo.id} session={session} photo={photo} close={() => setPhoto(null)} />}
-      {selectedPhotos.length ? <ul className="photo-list">
-        {selectedPhotos.map((entry) => <li key={entry.id}>
-          <div><strong>{entry.title}</strong><span>{entry.detail}</span></div>
-          <button className="secondary" onClick={() => setPhoto(entry)} aria-label={'Lihat foto ' + entry.title}>Lihat foto</button>
-        </li>)}
-      </ul> : <p>Belum ada lampiran pada bagian ini.</p>}
-    </section>
+      : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} /> : <>
+    <Overview isAdmin={profile.role === 'admin'} go={(target) => setSection(target as typeof section)} />
     </>}
   </>;
-}
-
-function PhotoViewer({ session, photo, close }: { session: Session; photo: Photo; close: () => void }) {
-  const [state, setState] = useState<{ src?: string; error?: string }>({});
-  const viewer = useRef<HTMLElement>(null);
-
-  useEffect(() => viewer.current?.focus(), []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl: string | undefined;
-    setState({});
-    api(session, controller.signal, { kind: photo.kind, id: String(photo.id) }).then((response) => response.blob()).then((blob) => {
-      if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(blob);
-      setState({ src: objectUrl });
-    }).catch((error: Error) => {
-      if (!controller.signal.aborted) setState({ error: error.message });
-    });
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [session, photo]);
-
-  return <figure className="viewer" ref={viewer} tabIndex={-1}>
-    <figcaption><strong>{photo.title}</strong><button className="secondary" onClick={close}>Tutup</button></figcaption>
-    {state.src ? <img src={state.src} alt={'Lampiran ' + photo.title} />
-      : state.error ? <p className="notice" role="alert">{state.error}</p>
-        : <p role="status">Memuat foto…</p>}
-  </figure>;
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

@@ -27,11 +27,11 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
-  const admin = await one(`UPDATE simbar.users SET auth_user_id = $1, is_approved = true
+  const admin = await one(`UPDATE simbar.users SET auth_user_id = $1, is_approved = true, role = 'admin'
     WHERE id = (SELECT id FROM simbar.users WHERE role IN ('admin', 'admin_gudang') ORDER BY id LIMIT 1) RETURNING id`, [ADMIN]);
   await db.query(`INSERT INTO simbar.users (name, email, role, is_approved, auth_user_id)
     VALUES ('Staf Uji', 'staf-uji@example.invalid', 'staff', true, $1)`, [STAFF]);
@@ -283,6 +283,33 @@ try {
   assert.ok(kartu.riwayat.some((entry) => entry.tahun === 2026));
   assert.equal((await one('SELECT jsonb_array_length(public.simbar_penyusutan_export(2026)) AS n')).n, Number(after.total_aset));
   console.log(`Penyusutan matches Laravel for ${parity.comparable}/${parity.stored} stored periods (${parity.stored - parity.comparable} recalculated because the asset or kategori was edited later); stored 2026 before re-run: ${before.total_aset}.`);
+
+  // Laporan (admin only) and dashboard.
+  const masuk = (await one(`SELECT public.simbar_laporan('barang_masuk', '{}', 0) AS l`)).l;
+  const masukSum = await one('SELECT count(*)::int AS n, coalesce(sum(quantity), 0)::int AS q FROM simbar.stock_in');
+  assert.deepEqual([masuk.total, Number(masuk.stats.total_qty), masuk.rows.length], [masukSum.n, masukSum.q, masukSum.n]);
+  const keluar2026 = (await one(`SELECT public.simbar_laporan('barang_keluar', '{"dari":"2026-01-01","sampai":"2026-12-31"}', 1) AS l`)).l;
+  assert.equal(keluar2026.total, (await one(`SELECT count(*)::int AS n FROM simbar.stock_out WHERE date BETWEEN '2026-01-01' AND '2026-12-31'`)).n);
+  assert.ok(keluar2026.rows.length <= 15);
+  for (const kind of ['pengambilan', 'permintaan_bhp', 'usulan_aset']) {
+    assert.ok((await one(`SELECT public.simbar_laporan($1, '{}', 1) AS l`, [kind])).l.total >= 0);
+  }
+  const periode = (await one(`SELECT public.simbar_laporan_periode('2026-01-01', '2026-03-31', NULL) AS p`)).p;
+  assert.equal(Number(periode.summary.total_stock), (await one('SELECT sum(stock)::int AS s FROM simbar.items')).s);
+  const tahunan = (await one('SELECT public.simbar_laporan_tahunan(2026) AS t')).t;
+  assert.equal(tahunan.months.length, 12);
+  assert.equal(tahunan.months.reduce((sum, month) => sum + Number(month.stock_in), 0),
+    (await one(`SELECT coalesce(sum(quantity), 0)::int AS s FROM simbar.stock_in WHERE extract(year FROM date) = 2026`)).s);
+  const board = (await one('SELECT public.simbar_dashboard(90) AS d')).d;
+  assert.ok(board.monthly.length === 6 && board.queues && board.funnel && board.aging);
+  await as(STAFF);
+  await assert.rejects(db.query(`SELECT public.simbar_laporan('barang_masuk', '{}', 1)`), /Akses ditolak/);
+  const staffBoard = (await one('SELECT public.simbar_dashboard(30) AS d')).d;
+  assert.ok(!('queues' in staffBoard) && staffBoard.stats.total_items > 0);
+  await as(ADMIN);
+  await db.query(`UPDATE simbar.users SET role = 'admin_gudang' WHERE id = $1`, [admin.id]);
+  await assert.rejects(db.query(`SELECT public.simbar_laporan('barang_masuk', '{}', 1)`), /Akses ditolak/, 'laporan is admin only');
+  await db.query(`UPDATE simbar.users SET role = 'admin' WHERE id = $1`, [admin.id]);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');
