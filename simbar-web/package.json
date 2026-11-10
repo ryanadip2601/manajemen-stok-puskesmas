@@ -12,7 +12,8 @@
     "check:cloud": "node --env-file-if-exists=.env.local scripts/check-cloud.mjs",
     "import:database": "node --env-file-if-exists=.env.local scripts/import-database.mjs",
     "import:attachments": "node --env-file-if-exists=.env.local scripts/import-attachments.mjs",
-    "verify:operations": "node scripts/verify-operations.mjs"
+    "verify:operations": "node scripts/verify-operations.mjs",
+    "import:auth": "node scripts/import-auth-users.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.101.1",

@@ -234,3 +234,10 @@ button, input, select, textarea { font: inherit; }
 .insight-head { margin: 24px 0 0; }
 .panel + .overview-grid, .overview-grid + .panel { margin-top: 18px; }
 @media (max-width: 720px) { .overview-grid { grid-template-columns: 1fr; } }
+
+.auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.link { background: none; border: 0; padding: 4px 0; color: #126054; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.login-layout.single { grid-template-columns: minmax(0, 480px); justify-content: center; }
+.inline-select { display: inline-flex; align-items: center; gap: 8px; font-weight: 650; }
+.inline-select select { border: 1px solid #bfcfc5; border-radius: 9px; padding: 9px 11px; background: #fff; }
+.record-form + .record-form { margin-top: 14px; }

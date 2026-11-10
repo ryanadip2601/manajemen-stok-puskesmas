@@ -24,10 +24,13 @@ const stockOf = async (id) => (await one('SELECT stock FROM simbar.items WHERE i
 
 try {
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth;
-    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
+    CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb, encrypted_password text, updated_at timestamptz);
+    CREATE SCHEMA extensions; CREATE FUNCTION extensions.gen_salt(text, integer) RETURNS text LANGUAGE sql AS $$ SELECT 'salt' $$;
+    CREATE FUNCTION extensions.crypt(text, text) RETURNS text LANGUAGE sql AS $$ SELECT 'hash:' || $1 $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -310,6 +313,47 @@ try {
   await db.query(`UPDATE simbar.users SET role = 'admin_gudang' WHERE id = $1`, [admin.id]);
   await assert.rejects(db.query(`SELECT public.simbar_laporan('barang_masuk', '{}', 1)`), /Akses ditolak/, 'laporan is admin only');
   await db.query(`UPDATE simbar.users SET role = 'admin' WHERE id = $1`, [admin.id]);
+
+  // Accounts: self registration stays pending; legacy emails are never auto-linked; admin manages access.
+  const NEWBIE = '00000000-0000-4000-8000-000000000003';
+  await db.query(`INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES ($1, 'Baru.Uji@Example.invalid', '{"name":"Pendaftar Uji","phone":"0812"}')`, [NEWBIE]);
+  const newbie = await one(`SELECT id, role, is_approved, email FROM simbar.users WHERE auth_user_id = $1`, [NEWBIE]);
+  assert.deepEqual([newbie.role, newbie.is_approved, newbie.email], ['staff', false, 'baru.uji@example.invalid']);
+  const legacyEmail = (await one('SELECT email FROM simbar.users WHERE auth_user_id IS NULL AND id > 0 ORDER BY id LIMIT 1')).email;
+  await db.query(`INSERT INTO auth.users (id, email) VALUES ('00000000-0000-4000-8000-000000000004', $1)`, [legacyEmail.toUpperCase()]);
+  assert.equal((await one('SELECT count(*)::int AS n FROM simbar.users WHERE auth_user_id = $1', ['00000000-0000-4000-8000-000000000004'])).n, 0,
+    'registering with a legacy email must not take over that profile');
+  await as(NEWBIE);
+  assert.deepEqual((await one('SELECT public.simbar_my_status() AS s')).s, { linked: true, approved: false, id: Number(newbie.id), name: 'Pendaftar Uji', role: 'staff' });
+  await assert.rejects(db.query(`SELECT public.simbar_dashboard(30)`), /not approved or linked/);
+  await as(STAFF);
+  await assert.rejects(db.query(`SELECT public.simbar_users_list('all', NULL, '', 1)`), /Akses ditolak/);
+  await db.query(`SELECT public.simbar_session_event('login', 'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile')`);
+  const history = await one(`SELECT device, browser, platform FROM simbar.login_histories ORDER BY id DESC LIMIT 1`);
+  assert.deepEqual(history, { device: 'Mobile', browser: 'Chrome', platform: 'Android' });
+  await db.query(`SELECT public.simbar_profile_update('Staf Uji Baru', '0813')`);
+  assert.equal((await one('SELECT public.simbar_profile_get() AS p')).p.name, 'Staf Uji Baru');
+  await as(ADMIN);
+  const pendingUsers = (await one(`SELECT public.simbar_users_list('pending', NULL, 'Pendaftar', 1) AS l`)).l;
+  assert.equal(pendingUsers.total, 1);
+  await db.query(`SELECT public.simbar_user_act($1, 'approve', 'admin_gudang')`, [newbie.id]);
+  await as(NEWBIE);
+  assert.equal((await one('SELECT public.simbar_my_status() AS s')).s.role, 'admin_gudang');
+  await as(ADMIN);
+  await assert.rejects(db.query(`SELECT public.simbar_user_act($1, 'role', 'staff')`, [admin.id]), /akun sendiri/);
+  await assert.rejects(db.query(`SELECT public.simbar_user_act($1, 'reject')`, [newbie.id]), /sudah disetujui/);
+  await db.query(`SELECT public.simbar_user_set_password($1, 'passwordbaru123')`, [newbie.id]);
+  assert.equal((await one('SELECT encrypted_password FROM auth.users WHERE id = $1', [NEWBIE])).encrypted_password, 'hash:passwordbaru123');
+  await assert.rejects(db.query(`SELECT public.simbar_user_set_password($1, 'short')`, [newbie.id]), /minimal 8/);
+  const busyUser = (await one('SELECT user_id AS id FROM simbar.stock_in WHERE user_id <> $1 LIMIT 1', [admin.id])).id;
+  await assert.rejects(db.query(`SELECT public.simbar_user_act($1, 'delete')`, [busyUser]), /transaksi stok/);
+  await db.query(`SELECT public.simbar_user_act($1, 'delete')`, [newbie.id]);
+  assert.equal((await one('SELECT count(*)::int AS n FROM auth.users WHERE id = $1', [NEWBIE])).n, 0, 'deleting a user removes the login');
+  assert.ok((await one(`SELECT public.simbar_user_detail($1) AS d`, [admin.id])).d.stats.total_activities > 0);
+  assert.ok((await one(`SELECT public.simbar_login_history('{}', 1) AS h`)).h.stats.logins >= 1);
+  assert.ok((await one(`SELECT public.simbar_activity_logs('{"action":"user_approved"}', 1) AS l`)).l.total >= 1);
+  assert.ok((await one(`SELECT public.simbar_logs_clear('login_history') AS n`)).n >= 1);
+  assert.equal((await one('SELECT count(*)::int AS n FROM simbar.login_histories')).n, 0);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

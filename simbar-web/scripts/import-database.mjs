@@ -20,7 +20,7 @@ assert.ok(sqlitePath, 'Provide the path to the SQLite backup.');
 assert.ok(!replace || apply, '--replace only works together with --apply.');
 
 // Every file is idempotent except schema.sql, which only runs when the schema is missing.
-const migrations = ['media-objects.sql', 'preview-access.sql', 'preview-inventory.sql', 'ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql'];
+const migrations = ['media-objects.sql', 'preview-access.sql', 'preview-inventory.sql', 'ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql'];
 const TABLES = [
   'categories', 'kategori_aset', 'ruangan', 'units', 'users', 'barang_aset', 'items', 'login_histories', 'logs',
   'sbbk_documents', 'pemeliharaan_aset', 'penyusutan_aset', 'permintaan_barang', 'permintaan_restok', 'stock_in',
@@ -48,7 +48,10 @@ async function rehearse() {
   const db = new PGlite();
   try {
     await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-      CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS 'SELECT null::uuid';`);
+      CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS 'SELECT null::uuid';
+      CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb, encrypted_password text, updated_at timestamptz);
+    CREATE SCHEMA extensions; CREATE FUNCTION extensions.gen_salt(text, integer) RETURNS text LANGUAGE sql AS $$ SELECT 'salt' $$;
+    CREATE FUNCTION extensions.crypt(text, text) RETURNS text LANGUAGE sql AS $$ SELECT 'hash:' || $1 $$;`);
     await db.exec(schema);
     await db.exec(data);
     for (const sql of functions) await db.exec(sql);

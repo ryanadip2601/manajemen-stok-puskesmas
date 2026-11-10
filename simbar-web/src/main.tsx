@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
 import { Assets } from './Aset';
@@ -11,7 +11,9 @@ import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
 import { AdminUsulan, MyUsulan } from './Usulan';
 import { Catalog, Movements } from './Stock';
-import { client } from './supabase';
+import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
+import { client, rpc } from './supabase';
+import { Users } from './Users';
 import './style.css';
 
 const auth = client?.auth ?? null;
@@ -49,23 +51,53 @@ function Brand() {
   </div>;
 }
 
+type Status = { linked: boolean; approved: boolean; id?: number; name?: string; role?: string };
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(!auth);
-  const [signOutError, setSignOutError] = useState('');
+  const [recovery, setRecovery] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    const subscription = auth?.onAuthStateChange((_event, next) => {
+    const subscription = auth?.onAuthStateChange((event, next) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+      // A real sign-in (not a restored session) is recorded once the profile is known to be active.
+      if (event === 'SIGNED_IN' && next) window.sessionStorage.setItem('simbar-record-login', next.user.id);
       setSession(next);
       setReady(true);
     });
     return () => subscription?.data.subscription.unsubscribe();
   }, []);
 
+  const userId = session?.user.id;
+  useEffect(() => {
+    if (!userId) return setStatus(null);
+    let active = true;
+    setStatus(null);
+    rpc<Status>('simbar_my_status').then((value) => {
+      if (!active) return;
+      setStatus(value);
+      if (value.approved && window.sessionStorage.getItem('simbar-record-login') === userId) {
+        window.sessionStorage.removeItem('simbar-record-login');
+        rpc('simbar_session_event', { event: 'login', agent: navigator.userAgent }).catch(() => {});
+      }
+    }).catch((error: Error) => active && setNotice(error.message));
+    return () => { active = false; };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!status?.approved) return;
+    const timer = window.setInterval(() => rpc('simbar_session_event', { event: 'ping' }).catch(() => {}), 120_000);
+    return () => window.clearInterval(timer);
+  }, [status?.approved]);
+
   async function signOut() {
-    setSignOutError('');
+    setNotice('');
+    if (status?.approved) await rpc('simbar_session_event', { event: 'logout', agent: navigator.userAgent }).catch(() => {});
     const result = await auth?.signOut({ scope: 'local' }).catch(() => null);
-    if (!result || result.error) setSignOutError('Gagal keluar. Coba lagi.');
+    if (!result || result.error) setNotice('Gagal keluar. Coba lagi.');
   }
 
   return <div className="shell">
@@ -74,63 +106,21 @@ function App() {
       {session && <button className="secondary" onClick={signOut}>Keluar</button>}
     </div></header>
     <main>
-      {signOutError && <p className="notice" role="alert">{signOutError}</p>}
-      {!ready ? <p role="status">Memuat SIMBAR…</p> : session
-        ? <Dashboard key={session.user.id} session={session} />
-        : <Login />}
+      {notice && <p className="notice" role="alert">{notice}</p>}
+      {!ready ? <p role="status">Memuat SIMBAR…</p>
+        : recovery && session ? <NewPassword done={() => { setRecovery(false); setNotice(''); window.history.replaceState(null, '', '/'); }} />
+        : !session ? <AuthScreen />
+        : !status ? <p role="status">Memeriksa akun…</p>
+        : !status.approved ? <PendingAccount linked={status.linked} name={status.name} />
+        : <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} />}
     </main>
     <footer>UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
   </div>;
 }
 
-function Login() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!auth || busy) return;
-    const data = new FormData(event.currentTarget);
-    setBusy(true);
-    setError('');
-    try {
-      const result = await auth.signInWithPassword({
-        email: String(data.get('email')).trim().toLowerCase(),
-        password: String(data.get('password')),
-      });
-      if (result.error) {
-        setError(result.error.status === 429 ? 'Terlalu banyak percobaan. Tunggu sebentar.'
-          : 'Tidak bisa masuk. Periksa email dan kata sandi SIMBAR.');
-      }
-    } catch {
-      setError('Layanan login belum bisa dihubungi.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <section className="login-layout">
-    <div className="login-intro">
-      <p className="eyebrow">Inventaris &amp; pemeliharaan</p>
-      <h1>Sistem Manajemen Barang</h1>
-      <p>Ringkasan inventaris dan foto aset Puskesmas Karang Rejo dalam satu tempat.</p>
-    </div>
-    <form className="login-card" onSubmit={submit}>
-      <h2>Masuk ke SIMBAR</h2>
-      <p>Gunakan akun yang sudah diaktifkan untuk Preview.</p>
-      <label htmlFor="email">Email</label>
-      <input id="email" type="email" name="email" autoComplete="username" placeholder="nama@contoh.id" required />
-      <label htmlFor="password">Kata sandi</label>
-      <input id="password" type="password" name="password" autoComplete="current-password" required />
-      {(error || !auth) && <p className="notice" role="alert">{error || 'Login belum dikonfigurasi.'}</p>}
-      <button className="primary" type="submit" disabled={busy || !auth}>{busy ? 'Memeriksa…' : 'Masuk'}</button>
-    </form>
-  </section>;
-}
-
-function Dashboard({ session }: { session: Session }) {
+function Dashboard({ session, selfId }: { session: Session; selfId: number | null }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users'>('summary');
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'profil'>('summary');
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -154,7 +144,8 @@ function Dashboard({ session }: { session: Session }) {
   const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['aset', 'Barang aset'], ['pemeliharaan', 'Pemeliharaan'],
     ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang'], ['usulan', 'Usulan penerimaan']];
   if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['penyusutan', 'Penyusutan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
-  if (profile.role === 'admin') menu.push(['laporan', 'Laporan']);
+  if (profile.role === 'admin') menu.push(['laporan', 'Laporan'], ['users', 'Pengguna']);
+  menu.push(['profil', 'Profil']);
 
   return <>
     <section className="dashboard-intro">
@@ -170,6 +161,8 @@ function Dashboard({ session }: { session: Session }) {
     <RestockNotices />
     {section === 'aset' ? <Assets warehouse={warehouse} />
       : section === 'laporan' ? <Laporan />
+      : section === 'users' ? <Users selfId={selfId} />
+      : section === 'profil' ? <ProfilePage />
       : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
       : section === 'pickup' ? <MyPickups />

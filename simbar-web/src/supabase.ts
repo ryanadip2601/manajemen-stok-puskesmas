@@ -4,7 +4,7 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const client = url && publishableKey ? createClient(url, publishableKey, {
-  auth: { storage: window.sessionStorage, detectSessionInUrl: false },
+  auth: { storage: window.sessionStorage, detectSessionInUrl: true },
 }) : null;
 
 // Calls a SIMBAR database function as the signed-in user; the function enforces the role.
