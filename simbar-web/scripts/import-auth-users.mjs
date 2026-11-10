@@ -83,11 +83,16 @@ for (const user of plan.missingProfile) console.log(`  ! ${user.email}: no SIMBA
 if (!apply) {
   console.log('Nothing was changed. Add --apply to create the logins.');
 } else {
+  const links = [];
   for (const user of plan.create) {
     const created = await authRequest('POST', 'users', {
       email: user.email, password_hash: user.password.replace(/^\$2y\$/, '$2a$'), email_confirm: true, user_metadata: { name: user.name },
     });
-    sql(`UPDATE simbar.users SET auth_user_id = ${quote(created.id)} WHERE lower(email) = ${quote(user.email)} AND auth_user_id IS NULL;`, true);
+    links.push(`(${quote(user.email)}, ${quote(created.id)}::uuid)`);
+  }
+  if (links.length) {
+    sql(`UPDATE simbar.users u SET auth_user_id = l.id FROM (VALUES ${links.join(', ')}) AS l(email, id)
+      WHERE lower(u.email) = l.email AND u.auth_user_id IS NULL;`, true);
   }
   for (const user of plan.refresh) {
     await authRequest('PUT', 'users/' + user.authId, { password_hash: user.password.replace(/^\$2y\$/, '$2a$') });
