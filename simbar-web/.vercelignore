@@ -1,0 +1,10 @@
+.env*
+.vercel/
+dist/
+.supabase/
+supabase/
+db/
+scripts/
+**/*.sqlite*
+**/*.zip
+**/*.tar.gz

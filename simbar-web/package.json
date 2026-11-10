@@ -1,0 +1,31 @@
+{
+  "name": "simbar-web",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "verify:migration": "node scripts/verify-migration.mjs",
+    "check:cloud": "node --env-file-if-exists=.env.local scripts/check-cloud.mjs",
+    "import:database": "node --env-file-if-exists=.env.local scripts/import-database.mjs",
+    "import:attachments": "node --env-file-if-exists=.env.local scripts/import-attachments.mjs",
+    "verify:operations": "node scripts/verify-operations.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.101.1",
+    "jszip": "3.10.1",
+    "pg": "8.20.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.3"
+  }
+}
