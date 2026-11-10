@@ -197,3 +197,8 @@ button, input, select, textarea { font: inherit; }
 .badge.kondisi-rusak_berat, .badge.status-rusak { background: #fbe9e3; color: #8e3b24; }
 .badge.status-proses { background: #e1eefc; color: #1f4c7a; }
 @media (max-width: 720px) { .asset-filter { grid-template-columns: 1fr 1fr; } }
+
+.section-title { margin: 18px 0 4px; font-size: 1rem; }
+.year-select { border: 1px solid #bfcfc5; border-radius: 9px; padding: 9px 11px; background: #fff; min-height: 42px; }
+.inventory-scroll td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inventory-scroll tfoot { background: #f5f9f6; }

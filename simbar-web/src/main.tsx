@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
 import { Assets } from './Aset';
 import { Pemeliharaan } from './Pemeliharaan';
+import { Penyusutan } from './Penyusutan';
 import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
 import { AdminUsulan, MyUsulan } from './Usulan';
@@ -128,7 +129,7 @@ function Login() {
 
 function Dashboard({ session }: { session: Session }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan'>('summary');
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan'>('summary');
   const [kind, setKind] = useState<Photo['kind']>('asset');
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [reload, setReload] = useState(0);
@@ -154,7 +155,7 @@ function Dashboard({ session }: { session: Session }) {
   const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
   const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['aset', 'Barang aset'], ['pemeliharaan', 'Pemeliharaan'],
     ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang'], ['usulan', 'Usulan penerimaan']];
-  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
+  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['penyusutan', 'Penyusutan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
   const metrics = [
     ['Jenis barang', stats.items], ['Total stok', stats.stock], ['Aset tercatat', stats.assets], ['Foto terhubung', stats.photos],
   ] as const;
@@ -172,6 +173,7 @@ function Dashboard({ session }: { session: Session }) {
     </nav>
     <RestockNotices />
     {section === 'aset' ? <Assets warehouse={warehouse} />
+      : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
       : section === 'pickup' ? <MyPickups />
       : section === 'permintaan' ? <MyPermintaan />

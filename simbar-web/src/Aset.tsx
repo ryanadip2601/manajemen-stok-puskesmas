@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PhotoField, StoredPhoto } from './media';
+import { exportAssetsCsv } from './Penyusutan';
 import { rpc } from './supabase';
 
 type Room = { id: number; name: string; lokasi: string | null; keterangan: string | null; active: boolean; placeholder: boolean; assets: number };
@@ -170,6 +171,8 @@ function AssetList({ options, warehouse, refresh }: { options: Options; warehous
       <div className="form-actions wide">
         <button className="primary" type="submit">Terapkan</button>
         <button className="secondary" type="reset" onClick={() => { setFilters(empty); setPage(1); }}>Hapus filter</button>
+        {warehouse && <button className="secondary" type="button" onClick={() => exportAssetsCsv(filters)
+          .catch((error: Error) => setMessage({ text: error.message, ok: false }))}>Export CSV</button>}
       </div>
     </form>
     {warehouse && selected.size > 0 && <div className="bulk-bar" role="region" aria-label="Aksi massal">

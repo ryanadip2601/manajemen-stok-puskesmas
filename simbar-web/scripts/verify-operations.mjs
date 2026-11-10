@@ -27,7 +27,7 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -247,6 +247,42 @@ try {
   const photoRow = await one('SELECT tipe_foto_barang, foto_barang FROM simbar.permintaan_barang WHERE kode_permintaan = $1', [withPhoto]);
   assert.deepEqual(photoRow, { tipe_foto_barang: 'upload', foto_barang: ownPhoto });
   await as(ADMIN);
+
+  // Penyusutan: recompute every period Laravel stored and compare (assets edited since then are reported separately).
+  const parity = await one(`
+    SELECT count(*)::int AS stored,
+      count(*) FILTER (WHERE (h->>'nilai_perolehan')::numeric = p.nilai_perolehan AND (h->>'umur_manfaat')::int = p.umur_manfaat)::int AS comparable,
+      count(*) FILTER (WHERE (h->>'nilai_perolehan')::numeric = p.nilai_perolehan AND (h->>'umur_manfaat')::int = p.umur_manfaat
+        AND (abs((h->>'akumulasi_penyusutan')::numeric - p.akumulasi_penyusutan_akhir) > 0.01
+          OR abs((h->>'nilai_buku')::numeric - p.nilai_buku_akhir) > 0.01
+          OR abs((h->>'penyusutan_per_tahun')::numeric - p.penyusutan_per_tahun) > 0.01))::int AS mismatched
+      ,count(*) FILTER (WHERE NOT ((h->>'nilai_perolehan')::numeric = p.nilai_perolehan AND (h->>'umur_manfaat')::int = p.umur_manfaat)
+        AND NOT (a.updated_at > p.updated_at OR k.updated_at > p.updated_at))::int AS unexplained
+    FROM simbar.penyusutan_aset p JOIN simbar.barang_aset a ON a.id = p.barang_aset_id JOIN simbar.kategori_aset k ON k.id = a.kategori_aset_id
+    CROSS JOIN LATERAL (SELECT simbar.hitung_penyusutan(p.barang_aset_id, p.tanggal_hitung) AS h) x`);
+  assert.equal(parity.unexplained, 0, 'Periods differ without a later asset/kategori edit: ' + JSON.stringify(parity));
+  assert.equal(parity.mismatched, 0, 'Depreciation differs from Laravel: ' + JSON.stringify(parity));
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_penyusutan_summary(2026)'), /Akses ditolak/);
+  await as(ADMIN);
+  const before = (await one('SELECT public.simbar_penyusutan_summary(2026) AS s')).s.stored;
+  await assert.rejects(db.query('SELECT public.simbar_penyusutan_proses(1999)'), /tidak valid/);
+  const run = (await one('SELECT public.simbar_penyusutan_proses(2026) AS r')).r;
+  assert.ok(run.aset_diproses > 0 && run.aset_diproses + run.aset_skip === run.total_aset, JSON.stringify(run));
+  const after = (await one('SELECT public.simbar_penyusutan_summary(2026) AS s')).s.stored;
+  // Like Laravel, rows of assets that are no longer active stay; every processed asset has exactly one row.
+  assert.ok(Number(after.total_aset) >= run.aset_diproses);
+  assert.equal((await one(`SELECT count(*)::int AS n FROM (SELECT barang_aset_id FROM simbar.penyusutan_aset
+    WHERE tahun = 2026 AND bulan IS NULL GROUP BY 1 HAVING count(*) > 1) d`)).n, 0, 'no duplicate periods');
+  await db.query('SELECT public.simbar_penyusutan_proses(2026)');
+  assert.equal(Number((await one('SELECT public.simbar_penyusutan_summary(2026) AS s')).s.stored.total_aset), Number(after.total_aset),
+    're-running the year does not add rows');
+  const detail = (await one(`SELECT public.simbar_penyusutan_detail('{}', '2026-12-31') AS d`)).d;
+  assert.equal(detail.length, run.total_aset);
+  const kartu = (await one('SELECT public.simbar_penyusutan_kartu($1) AS k', [detail.find((row) => row.dapat_disusutkan).id])).k;
+  assert.ok(kartu.riwayat.some((entry) => entry.tahun === 2026));
+  assert.equal((await one('SELECT jsonb_array_length(public.simbar_penyusutan_export(2026)) AS n')).n, Number(after.total_aset));
+  console.log(`Penyusutan matches Laravel for ${parity.comparable}/${parity.stored} stored periods (${parity.stored - parity.comparable} recalculated because the asset or kategori was edited later); stored 2026 before re-run: ${before.total_aset}.`);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');
