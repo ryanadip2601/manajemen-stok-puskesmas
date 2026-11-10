@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
+import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
 import { Catalog, Movements } from './Stock';
 import { client } from './supabase';
@@ -124,7 +125,7 @@ function Login() {
 
 function Dashboard({ session }: { session: Session }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist'>('summary');
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi'>('summary');
   const [kind, setKind] = useState<Photo['kind']>('asset');
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [reload, setReload] = useState(0);
@@ -149,8 +150,8 @@ function Dashboard({ session }: { session: Session }) {
   const selectedPhotos = photos.filter((entry) => entry.kind === kind);
   const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
   const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['assets', 'Daftar aset'],
-    ['pickup', 'Pengambilan barang']];
-  if (warehouse) menu.push(['checklist', 'Checklist'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
+    ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang']];
+  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
   const metrics = [
     ['Jenis barang', stats.items], ['Total stok', stats.stock], ['Aset tercatat', stats.assets], ['Foto terhubung', stats.photos],
   ] as const;
@@ -166,7 +167,10 @@ function Dashboard({ session }: { session: Session }) {
         <button key={value} className="secondary" aria-pressed={section === value} onClick={() => setSection(value)}>{label}</button>
       )}
     </nav>
+    <RestockNotices />
     {section === 'pickup' ? <MyPickups />
+      : section === 'permintaan' ? <MyPermintaan />
+      : section === 'verifikasi' ? <AdminPermintaan />
       : section === 'checklist' ? <Checklist />
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />

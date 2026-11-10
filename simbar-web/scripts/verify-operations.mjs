@@ -27,7 +27,7 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -108,6 +108,47 @@ try {
   await as(ADMIN);
   await db.query(`SELECT public.simbar_checklist_act($1, 'reject', 'Stok untuk program')`, [pending]);
   assert.equal((await one('SELECT reject_reason FROM simbar.stock_out_requests WHERE id = $1', [pending])).reject_reason, 'Stok untuk program');
+
+  // Permintaan barang: restok becomes "tersedia" after barang masuk; barang baru creates a barang on approval.
+  const low = await one(`INSERT INTO simbar.items (code, name, category_id, unit_id, stock, minimum_stock, perolehan, price)
+    SELECT 'UJI-RESTOK', 'Barang Restok Uji', c.id, u.id, 0, 3, 'BLUD', 0
+    FROM simbar.categories c, simbar.units u ORDER BY c.id, u.id LIMIT 1 RETURNING id, category_id, unit_id`);
+  await as(STAFF);
+  const restok = (await one(`SELECT public.simbar_permintaan_save(NULL, 'restok', $1, NULL, NULL, 10, 'tinggi', 'habis') AS code`, [low.id])).code;
+  assert.match(restok, /^PBR-\d{6}-\d{4}$/);
+  await assert.rejects(db.query(`SELECT public.simbar_permintaan_save(NULL, 'restok', $1, NULL, NULL, 1, 'sedang')`, [low.id]), /masih aktif/);
+  const plenty = await one('SELECT id FROM simbar.items WHERE stock > minimum_stock ORDER BY id LIMIT 1');
+  await assert.rejects(db.query(`SELECT public.simbar_permintaan_save(NULL, 'restok', $1, NULL, NULL, 1, 'sedang')`, [plenty.id]), /stok yang cukup/);
+  const baru = (await one(`SELECT public.simbar_permintaan_save(NULL, 'barang_baru', NULL, 'Termometer Uji', NULL, 4, 'sedang', NULL,
+    'https://example.com/termometer.png') AS code`)).code;
+  assert.notEqual(baru, restok);
+  await assert.rejects(db.query('SELECT public.simbar_permintaan_list(false, $1, $2, $3, 1)', ['all', 'all', '']), /Akses ditolak/);
+  const myRequests = (await one(`SELECT public.simbar_permintaan_list(true, 'pending', 'all', 'Uji', 1) AS l`)).l;
+  assert.equal(myRequests.total, 2);
+  const restokId = myRequests.rows.find((row) => row.code === restok).id;
+  const baruId = myRequests.rows.find((row) => row.code === baru).id;
+
+  await as(ADMIN);
+  await assert.rejects(db.query(`SELECT public.simbar_permintaan_act($1, 'reject', NULL)`, [restokId]), /wajib diisi/);
+  await db.query(`SELECT public.simbar_permintaan_act($1, 'revision', 'Jumlah terlalu banyak')`, [baruId]);
+  await as(STAFF);
+  await db.query(`SELECT public.simbar_permintaan_save($1, 'barang_baru', NULL, 'Termometer Uji', NULL, 2, 'sedang')`, [baruId]);
+  assert.equal((await one(`SELECT public.simbar_permintaan_get($1) AS g`, [baruId])).g.status, 'pending');
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_permintaan_act($1, 'proses')`, [baruId]);
+  const createdCode = (await one(`SELECT public.simbar_permintaan_act($1, 'approve', 'OK', $2) AS c`, [baruId,
+    JSON.stringify({ code: 'UJI-BARU-01', category_id: low.category_id, unit_id: low.unit_id, price: 25000, perolehan: 'BLUD', minimum_stock: 1 })])).c;
+  assert.equal(createdCode, 'UJI-BARU-01');
+  assert.equal((await one(`SELECT stock FROM simbar.items WHERE code = 'UJI-BARU-01'`)).stock, 2);
+  await db.query(`SELECT public.simbar_permintaan_act($1, 'approve', NULL)`, [restokId]);
+  await assert.rejects(db.query(`SELECT public.simbar_permintaan_act($1, 'reject', 'x')`, [restokId]), /sudah diverifikasi/);
+  await db.query(`SELECT public.simbar_stock_save('in', NULL, $1, 10, '2026-11-10', NULL)`, [low.id]);
+  await as(STAFF);
+  const alerts = (await one('SELECT public.simbar_permintaan_notifications() AS n')).n;
+  assert.deepEqual(alerts.map((alert) => alert.code), [restok]);
+  assert.equal((await one('SELECT public.simbar_permintaan_mark_read() AS n')).n, 1);
+  assert.equal((await one('SELECT public.simbar_permintaan_notifications() AS n')).n.length, 0);
+  await assert.rejects(db.query('SELECT public.simbar_permintaan_cancel($1)', [restokId]), /tidak dapat dibatalkan/);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

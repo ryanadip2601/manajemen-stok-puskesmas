@@ -272,6 +272,9 @@ BEGIN
     IF delta <> 0 THEN
         UPDATE simbar.items SET stock = stock + delta, updated_at = simbar.local_now() WHERE id = item.id;
     END IF;
+    IF movement_kind = 'in' THEN
+        PERFORM simbar.mark_restock_available(item.id);
+    END IF;
     IF movement_id IS NULL THEN
         PERFORM simbar.write_log(actor.id, 'stock_' || movement_kind || '_created',
             label || ': ' || item.name || ' sebanyak ' || movement_quantity || ' ' || unit_symbol);

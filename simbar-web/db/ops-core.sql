@@ -43,6 +43,25 @@ AS $function$
     VALUES (actor, log_action, log_description, simbar.local_now());
 $function$;
 
+-- Approved restok requests become "tersedia" once the barang has stock again (checkAndUpdateAvailability).
+CREATE OR REPLACE FUNCTION simbar.mark_restock_available(item_ref bigint)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE
+    changed integer;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM simbar.items WHERE id = item_ref AND stock > 0) THEN
+        RETURN 0;
+    END IF;
+    UPDATE simbar.permintaan_barang SET status = 'tersedia', notified_at = NULL, updated_at = simbar.local_now()
+    WHERE item_id = item_ref AND tipe = 'restok' AND status = 'disetujui';
+    GET DIAGNOSTICS changed = ROW_COUNT;
+    RETURN changed;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION simbar.mark_restock_available(bigint) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.require_profile(text[]) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.write_log(bigint, text, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.local_now() FROM PUBLIC, anon, authenticated, service_role;
