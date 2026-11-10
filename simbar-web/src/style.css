@@ -169,3 +169,7 @@ button, input, select, textarea { font: inherit; }
 .badge.revisi { background: #f1e8fb; color: #5b2f86; }
 .badge.ditolak { background: #fbe9e3; color: #8e3b24; }
 @media (max-width: 720px) { .detail-list, .approve-form { grid-template-columns: 1fr; } }
+
+.photo-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.photo-link { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid #d3e2d8; background: #fff; border-radius: 9px; padding: 6px 6px 6px 10px; }
+.photo-link span { overflow-wrap: anywhere; font-size: .86rem; }

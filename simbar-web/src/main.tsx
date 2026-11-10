@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
 import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
+import { AdminUsulan, MyUsulan } from './Usulan';
 import { Catalog, Movements } from './Stock';
 import { client } from './supabase';
 import './style.css';
@@ -125,7 +126,7 @@ function Login() {
 
 function Dashboard({ session }: { session: Session }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi'>('summary');
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin'>('summary');
   const [kind, setKind] = useState<Photo['kind']>('asset');
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [reload, setReload] = useState(0);
@@ -150,8 +151,8 @@ function Dashboard({ session }: { session: Session }) {
   const selectedPhotos = photos.filter((entry) => entry.kind === kind);
   const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
   const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['assets', 'Daftar aset'],
-    ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang']];
-  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
+    ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang'], ['usulan', 'Usulan penerimaan']];
+  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
   const metrics = [
     ['Jenis barang', stats.items], ['Total stok', stats.stock], ['Aset tercatat', stats.assets], ['Foto terhubung', stats.photos],
   ] as const;
@@ -171,6 +172,8 @@ function Dashboard({ session }: { session: Session }) {
     {section === 'pickup' ? <MyPickups />
       : section === 'permintaan' ? <MyPermintaan />
       : section === 'verifikasi' ? <AdminPermintaan />
+      : section === 'usulan' ? <MyUsulan canExport={warehouse} />
+      : section === 'usulan-admin' ? <AdminUsulan />
       : section === 'checklist' ? <Checklist />
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />

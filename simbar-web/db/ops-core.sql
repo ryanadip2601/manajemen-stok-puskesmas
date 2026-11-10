@@ -61,6 +61,23 @@ BEGIN
 END;
 $function$;
 
+-- BarangAset::generateKodeAset: first three letters of the kategori, the year, and the next 4-digit number.
+-- Callers hold the advisory lock until commit so concurrent inserts never share a code.
+CREATE OR REPLACE FUNCTION simbar.next_kode_aset(kategori_ref bigint)
+RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE
+    prefix text := coalesce((SELECT upper(left(nama_kategori, 3)) FROM simbar.kategori_aset WHERE id = kategori_ref), 'AST')
+        || '-' || to_char(simbar.local_today(), 'YYYY') || '-';
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('simbar.barang_aset.kode'));
+    RETURN prefix || lpad((coalesce(max(right(kode_aset, 4)::integer), 0) + 1)::text, 4, '0')
+        FROM simbar.barang_aset WHERE left(kode_aset, char_length(prefix)) = prefix AND right(kode_aset, 4) ~ '^[0-9]{4}$';
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION simbar.next_kode_aset(bigint) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.mark_restock_available(bigint) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.require_profile(text[]) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION simbar.write_log(bigint, text, text) FROM PUBLIC, anon, authenticated, service_role;

@@ -27,7 +27,7 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -149,6 +149,33 @@ try {
   assert.equal((await one('SELECT public.simbar_permintaan_mark_read() AS n')).n, 1);
   assert.equal((await one('SELECT public.simbar_permintaan_notifications() AS n')).n.length, 0);
   await assert.rejects(db.query('SELECT public.simbar_permintaan_cancel($1)', [restokId]), /tidak dapat dibatalkan/);
+
+  // Usulan penerimaan: revision round trip, approval creates the barang aset with the next kode.
+  const room = await one('SELECT id FROM simbar.ruangan WHERE is_active ORDER BY id LIMIT 1');
+  const kategori = await one('SELECT id, upper(left(nama_kategori, 3)) AS prefix FROM simbar.kategori_aset WHERE is_active ORDER BY id LIMIT 1');
+  const form = { ruangan_id: room.id, nama_barang: 'Kursi Uji', merk: 'Uji', jumlah: 3, kondisi_barang: 'bekas_rusak_ringan',
+    kelengkapan: 'lengkap', estimasi_harga: 150000, sumber_barang: 'Hibah', prioritas: 'sedang', photos: ['https://example.com/kursi.jpg'] };
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_usulan_save(NULL, $1)', [JSON.stringify({ ...form, photos: ['javascript:alert(1)'] })]), /link foto/);
+  const usulanCode = (await one('SELECT public.simbar_usulan_save(NULL, $1) AS c', [JSON.stringify(form)])).c;
+  assert.match(usulanCode, /^USL-\d{6}-\d{4}$/);
+  await assert.rejects(db.query('SELECT public.simbar_usulan_save(NULL, $1)', [JSON.stringify(form)]), /usulan pending/);
+  await assert.rejects(db.query(`SELECT public.simbar_usulan_list(false, 'all', NULL, '', 1)`), /Akses ditolak/);
+  const usulanId = (await one(`SELECT public.simbar_usulan_list(true, 'pending', NULL, 'Kursi Uji', 1) AS l`)).l.rows[0].id;
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_usulan_act($1, 'revision', 'Lengkapi merk')`, [usulanId]);
+  await as(STAFF);
+  await db.query('SELECT public.simbar_usulan_save($1, $2)', [usulanId, JSON.stringify({ ...form, merk: 'Merk Uji' })]);
+  await as(ADMIN);
+  await assert.rejects(db.query(`SELECT public.simbar_usulan_act($1, 'approve', NULL, NULL)`, [usulanId]), /Kategori aset wajib/);
+  const asetCode = (await one(`SELECT public.simbar_usulan_act($1, 'approve', 'OK', $2) AS c`, [usulanId, kategori.id])).c;
+  assert.ok(asetCode.startsWith(kategori.prefix + '-'), asetCode);
+  const aset = await one('SELECT a.kondisi, a.jumlah, a.merk, a.foto, a.sumber_dana FROM simbar.barang_aset a WHERE kode_aset = $1', [asetCode]);
+  assert.deepEqual(aset, { kondisi: 'rusak_ringan', jumlah: 3, merk: 'Merk Uji', foto: 'https://example.com/kursi.jpg', sumber_dana: 'Hibah' });
+  assert.equal((await one(`SELECT public.simbar_usulan_get($1) AS g`, [usulanId])).g.aset.code, asetCode);
+  await assert.rejects(db.query(`SELECT public.simbar_usulan_act($1, 'reject', 'x')`, [usulanId]), /sudah diverifikasi/);
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_usulan_cancel($1)', [usulanId]), /tidak dapat dibatalkan/);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');
