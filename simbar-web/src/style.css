@@ -133,3 +133,16 @@ button, input, select, textarea { font: inherit; }
 @media (max-width: 720px) {
   .record-form, .movement-filter { grid-template-columns: 1fr; }
 }
+
+.pickup-line { display: grid; grid-template-columns: 2fr 1fr; gap: 10px 16px; align-items: end; border: 1px solid #d3e2d8; border-radius: 12px; padding: 12px; margin: 0; background: #fff; }
+.pickup-line legend { font-weight: 700; padding: 0 6px; }
+.pickup-line .wide { grid-column: 1 / -1; }
+.pickup-line > button { justify-self: start; }
+.cell-note { display: block; font-size: .8rem; color: #52675e; }
+.cell-note.warn { color: #8e3b24; font-weight: 650; }
+.badge { display: inline-block; font-size: .78rem; font-weight: 700; padding: 3px 9px; border-radius: 100px; background: #e9efeb; color: #3d564c; }
+.badge.pending { background: #fff4d6; color: #6f4f00; }
+.badge.approved { background: #e1eefc; color: #1f4c7a; }
+.badge.completed { background: #e4f5ea; color: #155c3b; }
+.badge.rejected, .badge.cancelled { background: #fbe9e3; color: #8e3b24; }
+@media (max-width: 720px) { .pickup-line { grid-template-columns: 1fr; } }

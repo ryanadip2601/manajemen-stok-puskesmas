@@ -27,8 +27,9 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  for (const name of ['media-objects.sql', 'ops-core.sql', 'ops-stock.sql']) await db.exec(await read(name));
-  for (const name of ['ops-core.sql', 'ops-stock.sql']) await db.exec(await read(name)); // re-runnable
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql'];
+  for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
+  for (const name of operations) await db.exec(await read(name)); // re-runnable
 
   const admin = await one(`UPDATE simbar.users SET auth_user_id = $1, is_approved = true
     WHERE id = (SELECT id FROM simbar.users WHERE role IN ('admin', 'admin_gudang') ORDER BY id LIMIT 1) RETURNING id`, [ADMIN]);
@@ -72,6 +73,41 @@ try {
   await db.query(`SELECT public.simbar_stock_delete('in', $1)`, [stockIn]);
   await db.query(`SELECT public.simbar_item_delete($1)`, [item]);
   await db.query(`SELECT public.simbar_category_delete($1)`, [category]);
+
+  // Pengambilan barang: staff submits, warehouse approves (stock drops) or rejects.
+  const stocked = (await one('SELECT id, stock FROM simbar.items WHERE stock >= 3 ORDER BY id LIMIT 1'));
+  const other = (await one('SELECT id FROM simbar.items WHERE stock >= 1 AND id <> $1 ORDER BY id LIMIT 1', [stocked.id]));
+  await as(STAFF);
+  assert.ok((await one('SELECT public.simbar_pickup_options() AS o')).o.every((row) => row.stock > 0));
+  await assert.rejects(db.query('SELECT public.simbar_pickup_list(false, $1, 1)', ['all']), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_pickup_submit($1)',
+    [JSON.stringify([{ item_id: stocked.id, quantity: 1 }, { item_id: stocked.id, quantity: 1 }])]), /satu kali/);
+  await assert.rejects(db.query('SELECT public.simbar_pickup_submit($1)',
+    [JSON.stringify([{ item_id: stocked.id, quantity: stocked.stock + 1 }])]), /melebihi stok/);
+  assert.equal((await one('SELECT public.simbar_pickup_submit($1) AS n',
+    [JSON.stringify([{ item_id: stocked.id, quantity: 2, notes: 'uji' }, { item_id: other.id, quantity: 1 }])])).n, 2);
+  const mine = (await one(`SELECT public.simbar_pickup_list(true, 'pending', 1) AS l`)).l;
+  assert.equal(mine.total, 2);
+  const [second, first] = mine.rows.map((row) => row.id).sort((a, b) => b - a);
+  await db.query('SELECT public.simbar_pickup_cancel($1)', [second]);
+  await assert.rejects(db.query('SELECT public.simbar_pickup_cancel($1)', [second]), /Menunggu/);
+
+  await as(ADMIN);
+  await assert.rejects(db.query('SELECT public.simbar_pickup_cancel($1)', [first]), /tidak ditemukan/);
+  const checklist = (await one(`SELECT public.simbar_pickup_list(false, 'pending', 1) AS l`)).l;
+  assert.ok(checklist.counts.pending >= 1 && checklist.rows.some((row) => row.id === first));
+  await db.query(`SELECT public.simbar_checklist_act($1, 'approve', NULL)`, [first]);
+  assert.equal(await stockOf(stocked.id), stocked.stock - 2);
+  await assert.rejects(db.query(`SELECT public.simbar_checklist_act($1, 'reject', 'x')`, [first]), /sudah diproses/);
+  const done = await one('SELECT status, pickup_date IS NOT NULL AS picked FROM simbar.stock_out_requests WHERE id = $1', [first]);
+  assert.deepEqual(done, { status: 'completed', picked: true });
+  await as(STAFF);
+  const rejectMe = (await one('SELECT public.simbar_pickup_submit($1) AS n', [JSON.stringify([{ item_id: other.id, quantity: 1 }])]));
+  assert.equal(rejectMe.n, 1);
+  const pending = (await one(`SELECT public.simbar_pickup_list(true, 'pending', 1) AS l`)).l.rows[0].id;
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_checklist_act($1, 'reject', 'Stok untuk program')`, [pending]);
+  assert.equal((await one('SELECT reject_reason FROM simbar.stock_out_requests WHERE id = $1', [pending])).reject_reason, 'Stok untuk program');
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

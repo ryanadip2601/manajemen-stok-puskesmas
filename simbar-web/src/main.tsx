@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
+import { Checklist, MyPickups } from './Pickup';
 import { Catalog, Movements } from './Stock';
 import { client } from './supabase';
 import './style.css';
@@ -123,7 +124,7 @@ function Login() {
 
 function Dashboard({ session }: { session: Session }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out'>('summary');
+  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist'>('summary');
   const [kind, setKind] = useState<Photo['kind']>('asset');
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [reload, setReload] = useState(0);
@@ -147,8 +148,9 @@ function Dashboard({ session }: { session: Session }) {
   const { profile, stats, photos } = state.summary;
   const selectedPhotos = photos.filter((entry) => entry.kind === kind);
   const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
-  const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['assets', 'Daftar aset']];
-  if (warehouse) menu.push(['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
+  const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['assets', 'Daftar aset'],
+    ['pickup', 'Pengambilan barang']];
+  if (warehouse) menu.push(['checklist', 'Checklist'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
   const metrics = [
     ['Jenis barang', stats.items], ['Total stok', stats.stock], ['Aset tercatat', stats.assets], ['Foto terhubung', stats.photos],
   ] as const;
@@ -164,7 +166,9 @@ function Dashboard({ session }: { session: Session }) {
         <button key={value} className="secondary" aria-pressed={section === value} onClick={() => setSection(value)}>{label}</button>
       )}
     </nav>
-    {section === 'catalog' ? <Catalog />
+    {section === 'pickup' ? <MyPickups />
+      : section === 'checklist' ? <Checklist />
+      : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
       : section !== 'summary' ? <Inventory key={section} kind={section} session={session} request={api} /> : <>
     <dl className="metrics">{metrics.map(([label, count]) =>
