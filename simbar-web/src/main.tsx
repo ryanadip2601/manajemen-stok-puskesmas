@@ -14,7 +14,7 @@ import { Catalog, Movements } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
 import { Users } from './Users';
-import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useSeason, type SeasonChoice } from './effects';
+import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, useSeason, type SeasonChoice } from './effects';
 import { MusicMenu, useMusic, type Music } from './music';
 import { HeaderClock } from './clock';
 import { BRAND_FULL, LogoMark } from './logo';
@@ -111,7 +111,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [theme, toggleTheme] = useTheme();
   const ambience = useSeason();
-  const music = useMusic(ambience.season ?? seasonForDate(), !!(ready && session && !recovery && status?.approved));
+  const music = useMusic(!!(ready && session && !recovery && status?.approved));
 
   useEffect(() => {
     const subscription = auth?.onAuthStateChange((event, next) => {

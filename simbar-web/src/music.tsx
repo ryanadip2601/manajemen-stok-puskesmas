@@ -1,50 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
-import { remember, remembered, type Season } from './effects';
+import { remember, remembered } from './effects';
+import { SONGS, type Song } from './songs';
 
-// Background music, generated in the browser (no audio files, no licensing).
-// Several relaxing sounds; it keeps playing while the app is minimised and stops when the app closes or the person signs out.
+// Background music: ten public-domain melodies played on an acoustic guitar that is synthesised in the browser
+// (Karplus-Strong plucked strings, a guitar-body resonance and a room reverb). No audio files, no licensing.
+// It keeps playing while the app is minimised and stops when the app closes or the person signs out.
 
-export type Sound = 'musim' | 'piano' | 'kotak' | 'gamelan' | 'meditasi' | 'ombak' | 'hujan';
-export const soundNames: Record<Sound, string> = {
-  musim: 'Ikuti musim', piano: 'Piano tenang', kotak: 'Kotak musik', gamelan: 'Gamelan relaksasi',
-  meditasi: 'Meditasi', ombak: 'Ombak laut', hujan: 'Hujan tenang',
+const LETTERS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const midiOf = (name: string) => {
+  const [, letter, accidental, octave] = name.match(/^([A-G])([#b]?)(\d)$/)!;
+  return LETTERS[letter] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + (Number(octave) + 1) * 12;
 };
-const soundNotes: Record<Sound, string> = {
-  musim: 'Nada berganti mengikuti efek musim', piano: 'Piano dan akor lembut', kotak: 'Denting kotak musik',
-  gamelan: 'Saron dan gong, laras slendro', meditasi: 'Dengung dan mangkuk Tibet', ombak: 'Deburan ombak pelan', hujan: 'Rintik hujan yang lembut',
-};
-const soundIcons: Record<Sound, string> = {
-  musim: 'fas fa-wand-magic-sparkles', piano: 'fas fa-music', kotak: 'fas fa-gift', gamelan: 'fas fa-bell',
-  meditasi: 'fas fa-spa', ombak: 'fas fa-water', hujan: 'fas fa-cloud-rain',
-};
+const QUALITIES: Record<string, number[]> = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10] };
+// Guitar-like voicing: the root low in the bass, the other chord tones on the middle strings (G3 and up).
+function voicing(symbol: string) {
+  const [, letter, accidental, quality] = symbol.match(/^([A-G])([#b]?)(.*)$/)!;
+  const root = (LETTERS[letter] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + 12) % 12;
+  const bass = 40 + ((root - 4 + 12) % 12);
+  const tones = (QUALITIES[quality] ?? QUALITIES['']).slice(1).map((interval) => {
+    let note = 52 + ((root + interval - 4 + 24) % 12);
+    if (note < 55) note += 12;
+    return note;
+  }).sort((a, b) => a - b);
+  // tones: three notes for rolling patterns; upper: every chord tone above the bass, for block chords.
+  return { bass, tones: [bass + 12, ...tones].slice(0, 3).sort((a, b) => a - b), upper: tones };
+}
 
-type Mood = { root: number; scale: number[]; chords: number[][]; cutoff: number; gap: [number, number]; bell: boolean };
-// Roots sit in the range small phone and laptop speakers can actually play.
-const MOODS: Record<Season, Mood> = {
-  hujan: { root: 220, scale: [0, 3, 5, 7, 10, 12, 15], chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], cutoff: 1500, gap: [3200, 4600], bell: false },
-  pancaroba: { root: 246.94, scale: [0, 2, 3, 5, 7, 9, 10, 12], chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]], cutoff: 1700, gap: [2800, 4200], bell: false },
-  kemarau: { root: 261.63, scale: [0, 2, 4, 7, 9, 12, 14], chords: [[0, 4, 7], [5, 9, 12], [-3, 0, 4], [7, 11, 14]], cutoff: 1900, gap: [2600, 3800], bell: false },
-  semi: { root: 293.66, scale: [0, 2, 4, 7, 9, 12, 14, 16], chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], cutoff: 2300, gap: [2400, 3600], bell: true },
-  panas: { root: 329.63, scale: [0, 2, 4, 6, 7, 9, 11, 12], chords: [[0, 4, 7, 11], [2, 6, 9], [7, 11, 14], [4, 7, 11]], cutoff: 2100, gap: [2400, 3400], bell: false },
-  gugur: { root: 196, scale: [0, 2, 3, 7, 8, 10, 12], chords: [[0, 3, 7], [8, 12, 15], [5, 8, 12], [7, 10, 14]], cutoff: 1400, gap: [3000, 4400], bell: false },
-  salju: { root: 392, scale: [0, 2, 4, 6, 7, 11, 12, 14], chords: [[0, 4, 7, 11], [2, 6, 9], [-1, 2, 7], [4, 7, 11]], cutoff: 2600, gap: [2800, 4400], bell: true },
-};
-const PIANO: Mood = { root: 261.63, scale: [0, 2, 4, 7, 9, 12], chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [-5, -1, 2]], cutoff: 1700, gap: [3600, 5200], bell: false };
-// Evens out loudness between sounds (the quieter, sparser ones get a lift; the final limiter still guards peaks).
-const SOUND_LEVEL: Record<Sound, number> = { musim: 1, piano: 1, kotak: 1.6, gamelan: 1.8, meditasi: 2.3, ombak: 1.1, hujan: 1 };
-const SLENDRO = [1, 1.1487, 1.3195, 1.5157, 1.7411, 2];
-const GENDING = [[2, 1, 2, 3, 2, 1, 5, 0], [3, 5, 3, 2, 1, 2, 1, 5], [5, 3, 2, 1, 3, 2, 1, 0], [1, 2, 3, 5, 3, 2, 1, 2]];
-const hz = (root: number, semitones: number) => root * 2 ** (semitones / 12);
-const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
-// Notes are scheduled ahead of time; while the app is minimised the browser slows timers down, so we plan much further ahead.
+// Notes are planned ahead; while minimised the browser slows timers, so we plan much further ahead.
 const LOOKAHEAD = .3;
 const AHEAD_VISIBLE = 5;
 const AHEAD_HIDDEN = 80;
 
-type Session = { sound: Sound; fade: GainNode; voices: BiquadFilterNode; dry: GainNode; until: number; bar: number; sources: AudioScheduledSourceNode[]; swell?: GainNode };
+type Session = { song: number; fade: GainNode; strings: AudioNode; until: number };
 
-class Engine {
+class Guitar {
   playing = false;
+  onSong: (index: number) => void = () => {};
   private ctx: AudioContext;
   private master: GainNode;
   private mix: GainNode;
@@ -53,28 +44,25 @@ class Engine {
   private limiter: DynamicsCompressorNode;
   private session: Session | null = null;
   private timer = 0;
-  private season: Season = 'hujan';
-  private volume = .8;
-  private buffers = new Map<string, AudioBuffer>();
+  private notes = new Map<number, AudioBuffer>();
 
   constructor() {
     // iPhones mute web audio with the silent switch unless the page asks for media playback.
-    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
-    if (session) session.type = 'playback';
+    const audioSession = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (audioSession) audioSession.type = 'playback';
     this.ctx = new AudioContext({ latencyHint: 'playback' });
     this.mix = this.ctx.createGain();
     this.master = this.ctx.createGain();
     this.master.gain.value = 0;
-    // Shared room reverb for the melodic voices.
     this.reverb = this.ctx.createGain();
     const room = this.ctx.createConvolver();
-    room.buffer = this.room(2.6);
+    room.buffer = this.room(2.2);
     const wet = this.ctx.createGain();
-    wet.gain.value = .4;
+    wet.gain.value = .3;
     this.reverb.connect(room).connect(wet).connect(this.mix);
     // Level first, then a fast limiter as the very last stage, so chance pile-ups of notes can never pass 1.0.
     const level = this.ctx.createGain();
-    level.gain.value = 1.7;
+    level.gain.value = 1.15;
     this.limiter = this.ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -3;
     this.limiter.knee.value = 0;
@@ -95,25 +83,21 @@ class Engine {
   }
 
   // Call straight from a tap or click: browsers only unlock sound inside the gesture itself.
-  play(sound: Sound, season: Season, volume: number) {
-    this.season = season;
-    this.volume = volume;
+  play(song: number, volume: number) {
     this.ctx.resume().catch(() => {});
     this.element?.play().catch(() => {
-      // The element was refused; send the sound straight to the speakers instead.
       this.element = null;
       this.limiter.connect(this.ctx.destination);
     });
-    this.ramp(this.master.gain, volume, 1.5);
+    this.ramp(this.master.gain, volume, 1.2);
     this.playing = true;
-    if (this.session?.sound !== sound) this.switchTo(sound);
+    if (!this.session) this.switchTo(song);
     if (!this.timer) this.timer = window.setInterval(this.tick, 500);
     this.tick();
   }
 
-  setSound(sound: Sound) { if (this.playing && this.session?.sound !== sound) { this.switchTo(sound); this.tick(); } }
-  setSeason(season: Season) { this.season = season; }
-  setVolume(volume: number) { this.volume = volume; if (this.playing) this.ramp(this.master.gain, volume, .15); }
+  setSong(song: number) { if (this.playing) { this.switchTo(song); this.tick(); } }
+  setVolume(volume: number) { if (this.playing) this.ramp(this.master.gain, volume, .15); }
 
   stop() {
     this.playing = false;
@@ -122,7 +106,7 @@ class Engine {
     this.ramp(this.master.gain, 0, .8);
     window.setTimeout(() => {
       if (this.playing) return;
-      this.end(this.session);
+      this.session?.fade.disconnect();
       this.session = null;
       this.element?.pause();
       this.ctx.suspend().catch(() => {});
@@ -142,33 +126,39 @@ class Engine {
     param.linearRampToValueAtTime(value, now + seconds);
   }
 
-  // Cross-fade to a new sound: the old one fades out over two seconds while the new one fades in.
-  private switchTo(sound: Sound) {
+  // Cross-fade to another song: notes already planned for the old one fade out with its bus.
+  private switchTo(song: number) {
     const old = this.session;
     if (old) {
-      this.ramp(old.fade.gain, 0, 2);
-      window.setTimeout(() => this.end(old), 2500);
+      this.ramp(old.fade.gain, 0, 1.5);
+      window.setTimeout(() => old.fade.disconnect(), 2000);
     }
     const fade = this.ctx.createGain();
     fade.gain.value = 0;
     fade.connect(this.mix);
-    const voices = this.ctx.createBiquadFilter();
-    voices.type = 'lowpass';
-    voices.Q.value = .5;
-    voices.frequency.value = 1800;
-    voices.connect(fade);
-    voices.connect(this.reverb);
-    const dry = this.ctx.createGain();
-    dry.connect(fade);
-    this.session = { sound, fade, voices, dry, until: this.ctx.currentTime + LOOKAHEAD, bar: 0, sources: [] };
-    this.ramp(fade.gain, SOUND_LEVEL[sound], 2);
-    if (sound === 'ombak' || sound === 'hujan') this.startBed(this.session);
-  }
-
-  private end(session: Session | null) {
-    if (!session) return;
-    for (const source of session.sources) { try { source.stop(); } catch { /* already stopped */ } }
-    session.fade.disconnect();
+    // Guitar body: a warm low resonance and a softened top, so the strings sound wooden rather than wiry.
+    const body = this.ctx.createBiquadFilter();
+    body.type = 'peaking';
+    body.frequency.value = 110;
+    body.Q.value = 1.1;
+    body.gain.value = 4;
+    const air = this.ctx.createBiquadFilter();
+    air.type = 'peaking';
+    air.frequency.value = 230;
+    air.Q.value = 1.4;
+    air.gain.value = 2.5;
+    const soft = this.ctx.createBiquadFilter();
+    soft.type = 'lowpass';
+    soft.frequency.value = 3600;
+    soft.Q.value = .5;
+    const softer = this.ctx.createBiquadFilter();
+    softer.type = 'lowpass';
+    softer.frequency.value = 4800;
+    softer.Q.value = .5;
+    body.connect(air).connect(soft).connect(softer).connect(fade);
+    softer.connect(this.reverb);
+    this.session = { song, fade, strings: body, until: this.ctx.currentTime + LOOKAHEAD };
+    this.ramp(fade.gain, 1, 1.2);
   }
 
   private tick = () => {
@@ -177,41 +167,139 @@ class Engine {
     const horizon = this.ctx.currentTime + (document.hidden ? AHEAD_HIDDEN : AHEAD_VISIBLE);
     session.until = Math.max(session.until, this.ctx.currentTime + LOOKAHEAD);
     while (session.until < horizon) {
-      session.until += this.bar(session, session.until);
-      session.bar++;
+      const index = session.song;
+      const startsIn = (session.until - this.ctx.currentTime) * 1000;
+      window.setTimeout(() => { if (this.session === session) this.onSong(index); }, Math.max(0, startsIn));
+      session.until += this.perform(session, SONGS[index], session.until) + 1.6;
+      session.song = (index + 1) % SONGS.length;
     }
   };
 
-  /* ---------- Building blocks ---------- */
+  /* ---------- The guitar ---------- */
 
-  private voice(dest: AudioNode, freq: number, level: number, start: number, attack: number, end: number, release: 'linear' | 'exp') {
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(level, start + attack);
-    if (release === 'exp') gain.gain.setTargetAtTime(0, start + attack, (end - start - attack) / 5);
-    else gain.gain.linearRampToValueAtTime(0, end);
-    osc.connect(gain).connect(dest);
-    osc.start(start);
-    osc.stop(end + .05);
+  // One plucked string (Karplus-Strong): a soft noise burst circulating in a tuned delay loop that loses
+  // a little energy and treble on every pass, which is exactly how a real string decays.
+  private string(midi: number) {
+    const cached = this.notes.get(midi);
+    if (cached) return cached;
+    const rate = this.ctx.sampleRate;
+    const freq = 440 * 2 ** ((midi - 69) / 12);
+    const seconds = 3;
+    const length = Math.floor(rate * seconds);
+    const buffer = this.ctx.createBuffer(1, length, rate);
+    const out = buffer.getChannelData(0);
+    // Loop length with an all-pass for the fractional part, so every note is in tune.
+    const period = rate / freq;
+    let delay = Math.floor(period - .5);
+    let fraction = period - .5 - delay;
+    if (fraction < .1) { delay -= 1; fraction += 1; }
+    const allpass = (1 - fraction) / (1 + fraction);
+    // Low notes ring longer than high ones.
+    const ring = Math.max(1.4, 3.4 - (midi - 40) * .05);
+    const loss = Math.pow(10, -3 / (ring * freq));
+    // Excitation: noise softened twice (a fingertip rather than a hard pick), plucked about a fifth of the way along.
+    const burst = new Float32Array(delay + 1);
+    let warm = 0, warmer = 0;
+    for (let i = 0; i <= delay; i++) {
+      warm += ((Math.random() * 2 - 1) - warm) * .3;
+      warmer += (warm - warmer) * .3;
+      burst[i] = warmer;
+    }
+    const position = Math.max(1, Math.round(delay * .2));
+    for (let i = delay; i >= position; i--) burst[i] -= burst[i - position] * .85;
+    let x1 = 0, y1 = 0;
+    for (let i = 0; i < length; i++) {
+      if (i <= delay) { out[i] = burst[i]; continue; }
+      const x = loss * .5 * (out[i - delay] + out[i - delay - 1]);
+      const y = allpass * x + x1 - allpass * y1;
+      x1 = x;
+      y1 = y;
+      out[i] = y;
+    }
+    // Soften the very first milliseconds and normalise, so every string plays at the same strength.
+    let peak = 0;
+    const fadeIn = Math.floor(rate * .005);
+    for (let i = 0; i < length; i++) {
+      if (i < fadeIn) out[i] *= i / fadeIn;
+      peak = Math.max(peak, Math.abs(out[i]));
+    }
+    for (let i = 0; i < length; i++) out[i] /= peak || 1;
+    this.notes.set(midi, buffer);
+    return buffer;
   }
 
-  private pad(s: Session, freqs: number[], start: number, length: number, level = .1) {
-    for (const freq of freqs) {
-      this.voice(s.voices, freq, level, start, 1.8, start + length, 'linear');
-      this.voice(s.voices, freq * 2, level * .24, start, 2.2, start + length, 'linear');
+  private pluck(s: Session, midi: number, at: number, level: number, hold: number) {
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.string(midi);
+    // A tiny bit of human timing and touch.
+    const when = at + (Math.random() - .5) * .012;
+    const end = when + Math.min(hold, 2.8);
+    gain.gain.setValueAtTime(level * (.9 + Math.random() * .2), when);
+    gain.gain.setValueAtTime(level, end - .08);
+    gain.gain.linearRampToValueAtTime(0, end);
+    source.connect(gain).connect(s.strings);
+    source.start(when);
+    source.stop(end + .02);
+  }
+
+  // Plays one song (repeated as set) from `start`; returns its length in seconds.
+  private perform(s: Session, song: Song, start: number) {
+    const beat = 60 / song.bpm;
+    const tokens = song.melody.trim().split(/\s+/).map((token) => {
+      const [name, length] = token.split(':');
+      return { midi: name === 'r' ? null : midiOf(name) + (song.shift ?? 0), beats: Number(length) };
+    });
+    const songBeats = tokens.reduce((sum, t) => sum + t.beats, 0);
+    const times = song.repeat ?? 2;
+    for (let round = 0; round < times; round++) {
+      const offset = start + round * (songBeats * beat + .8);
+      let at = 0;
+      for (const { midi, beats } of tokens) {
+        if (midi !== null) this.pluck(s, midi, offset + at * beat, .5, beats * beat + .9);
+        at += beats;
+      }
+      at = 0;
+      for (const [symbol, beats] of song.chords) {
+        if (symbol !== '-') this.accompany(s, song, voicing(symbol), offset + at * beat, beats, beat);
+        at += beats;
+      }
+    }
+    return times * (songBeats * beat + .8) - .8;
+  }
+
+  // The right hand: fingerpicking patterns under the melody.
+  private accompany(s: Session, song: Song, { bass, tones, upper }: ReturnType<typeof voicing>, at: number, beats: number, beat: number) {
+    const ring = 1.6;
+    switch (song.style) {
+      case 'triplet':
+        for (let b = 0; b < beats; b++) {
+          if (b === 0) this.pluck(s, bass, at, .3, beats * beat);
+          this.pluck(s, tones[1], at + (b + 1 / 3) * beat, .16, ring);
+          this.pluck(s, tones[2], at + (b + 2 / 3) * beat, .16, ring);
+        }
+        break;
+      case 'gymno':
+        this.pluck(s, bass, at, .32, beats * beat);
+        for (const tone of upper) this.pluck(s, tone, at + beat, .14, (beats - 1) * beat + .5);
+        break;
+      case 'bass3':
+        this.pluck(s, bass, at, .3, 1.2);
+        this.pluck(s, bass + 7, at + .5 * beat, .18, 1);
+        this.pluck(s, bass + 12, at + beat, .18, 1);
+        break;
+      default: {
+        // Eighth notes: bass on the downbeat (and on beat three in 4/4), then the chord tones rolling up and down.
+        const order = [0, 1, 2, 1];
+        for (let k = 0; k < beats * 2; k++) {
+          const when = at + k * beat / 2;
+          if (k === 0 || (song.style === 'arp8' && k % 4 === 0)) this.pluck(s, bass, when, .3, beat * 2);
+          else this.pluck(s, tones[order[(k - 1) % 4]], when, .15, ring);
+        }
+      }
     }
   }
 
-  private pluck(s: Session, freq: number, start: number, bell: boolean, level = .14) {
-    const tail = bell ? 3.4 : 2.6;
-    this.voice(s.voices, freq, level, start, .03, start + tail, 'exp');
-    this.voice(s.voices, freq * 2, level * .25, start, .03, start + tail * .6, 'exp');
-    if (bell) this.voice(s.voices, freq * 3, level * .08, start, .03, start + tail * .4, 'exp');
-  }
-
-  // Decaying stereo room response for the reverb; smooth because it is filtered and faded in.
   private room(seconds: number) {
     const rate = this.ctx.sampleRate;
     const length = Math.round(rate * seconds);
@@ -226,196 +314,30 @@ class Engine {
     }
     return buffer;
   }
-
-  // Seamless looping noise for the ocean and rain beds: deep (brown) or soft (pink), with the loop ends joined.
-  private noise(kind: 'brown' | 'pink') {
-    const cached = this.buffers.get(kind);
-    if (cached) return cached;
-    const rate = this.ctx.sampleRate;
-    const length = rate * 8;
-    const buffer = this.ctx.createBuffer(1, length, rate);
-    const data = buffer.getChannelData(0);
-    let b0 = 0, b1 = 0, b2 = 0, last = 0;
-    for (let i = 0; i < length; i++) {
-      const white = Math.random() * 2 - 1;
-      if (kind === 'brown') {
-        last = (last + .02 * white) / 1.02;
-        data[i] = last;
-      } else {
-        b0 = .99765 * b0 + white * .099046;
-        b1 = .963 * b1 + white * .2965164;
-        b2 = .57 * b2 + white * 1.0526913;
-        data[i] = b0 + b1 + b2 + white * .1848;
-      }
-    }
-    let mean = 0;
-    for (let i = 0; i < length; i++) mean += data[i] / length;
-    const drift = data[length - 1] - data[0];
-    let peak = 0;
-    for (let i = 0; i < length; i++) {
-      data[i] -= mean + drift * (i / (length - 1));
-      peak = Math.max(peak, Math.abs(data[i]));
-    }
-    for (let i = 0; i < length; i++) data[i] /= peak;
-    this.buffers.set(kind, buffer);
-    return buffer;
-  }
-
-  private lowpass(frequency: number) {
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = frequency;
-    filter.Q.value = .5;
-    return filter;
-  }
-
-  private startBed(s: Session) {
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.noise(s.sound === 'ombak' ? 'brown' : 'pink');
-    source.loop = true;
-    const swell = this.ctx.createGain();
-    swell.gain.value = s.sound === 'ombak' ? .1 : .55;
-    // Two low-pass stages so nothing hissy reaches the speakers.
-    const cutoff = s.sound === 'ombak' ? 450 : 1200;
-    let chain: AudioNode = source.connect(this.lowpass(cutoff)).connect(this.lowpass(cutoff));
-    if (s.sound === 'hujan') {
-      const high = this.ctx.createBiquadFilter();
-      high.type = 'highpass';
-      high.frequency.value = 180;
-      chain = chain.connect(high);
-    }
-    chain.connect(swell).connect(s.dry);
-    source.start();
-    s.sources.push(source);
-    s.swell = swell;
-  }
-
-  /* ---------- One bar of each sound; returns its length in seconds ---------- */
-
-  private bar(s: Session, t: number): number {
-    switch (s.sound) {
-      case 'kotak': return this.musicBox(s, t);
-      case 'gamelan': return this.gamelan(s, t);
-      case 'meditasi': return this.meditation(s, t);
-      case 'ombak': return this.ocean(s, t);
-      case 'hujan': return this.rain(s, t);
-      default: return this.chords(s, t, s.sound === 'piano' ? PIANO : MOODS[this.season], s.sound === 'piano' ? 3 : 2);
-    }
-  }
-
-  private chords(s: Session, t: number, mood: Mood, maxNotes: number, level = .1) {
-    const length = (mood.gap[0] + Math.random() * (mood.gap[1] - mood.gap[0])) / 1000;
-    s.voices.frequency.setValueAtTime(mood.cutoff, t);
-    this.pad(s, mood.chords[s.bar % mood.chords.length].map((note) => hz(mood.root, note)), t, length * 1.2, level);
-    const notes = 1 + Math.floor(Math.random() * maxNotes);
-    for (let i = 0; i < notes; i++) this.pluck(s, hz(mood.root * 2, pick(mood.scale)), t + .4 + Math.random() * (length - .8), mood.bell);
-    return length;
-  }
-
-  private musicBox(s: Session, t: number) {
-    const scale = [0, 2, 4, 7, 9, 12, 14, 16];
-    const step = .42;
-    const count = 6;
-    s.voices.frequency.setValueAtTime(3200, t);
-    let index = Math.floor(Math.random() * 4);
-    for (let i = 0; i < count; i++) {
-      index = Math.max(0, Math.min(scale.length - 1, index + pick([-2, -1, 1, 1, 2])));
-      const freq = hz(523.25, scale[index]);
-      const at = t + i * step;
-      this.voice(s.voices, freq, .12, at, .01, at + 1.8, 'exp');
-      this.voice(s.voices, freq * 2, .03, at, .01, at + 1, 'exp');
-      this.voice(s.voices, freq * 3, .012, at, .01, at + .6, 'exp');
-    }
-    if (s.bar % 2 === 0) this.pad(s, [261.63, 329.63, 392].map((f) => f / 2), t, count * step * 2.2, .035);
-    return count * step + .5;
-  }
-
-  private gamelan(s: Session, t: number) {
-    const beat = .75;
-    const tune = 293.66;
-    const melody = GENDING[Math.floor(s.bar / 2) % GENDING.length];
-    s.voices.frequency.setValueAtTime(2600, t);
-    melody.forEach((note, i) => {
-      const at = t + i * beat;
-      const freq = tune * SLENDRO[note];
-      // Saron: bright bronze key with an inharmonic overtone.
-      this.voice(s.voices, freq, .13, at, .012, at + 2.2, 'exp');
-      this.voice(s.voices, freq * 2.76, .022, at, .012, at + .9, 'exp');
-      // Kenong on the half and full cycle.
-      if (i === 3 || i === 7) {
-        const kenong = tune / 2 * SLENDRO[(note + 2) % 5];
-        this.voice(s.voices, kenong, .08, at, .02, at + 3.2, 'exp');
-        this.voice(s.voices, kenong * 2, .02, at, .02, at + 2, 'exp');
-      }
-    });
-    // Gong ageng closes every second cycle: a deep beating hum.
-    if (s.bar % 2 === 1) {
-      const at = t + 7 * beat;
-      for (const [freq, level] of [[65.4, .2], [66.2, .18], [130.8, .07], [196.2, .025]] as const) this.voice(s.voices, freq, level, at, .05, at + 9, 'exp');
-    }
-    return melody.length * beat;
-  }
-
-  private meditation(s: Session, t: number) {
-    const length = 9 + Math.random() * 3;
-    s.voices.frequency.setValueAtTime(3000, t);
-    // Drone: two close tones that slowly beat, plus a fifth.
-    for (const [freq, level] of [[110, .06], [110.55, .05], [164.8, .035]] as const) this.voice(s.voices, freq, level, t, 3, t + length + 3, 'linear');
-    // Singing bowl: struck once per bar, each partial slightly detuned so it shimmers as it fades.
-    const bowl = pick([196, 220, 261.63]);
-    const at = t + .5 + Math.random() * 1.5;
-    for (const [ratio, level] of [[1, .14], [2.71, .05], [5.15, .014]] as const) {
-      this.voice(s.voices, bowl * ratio, level, at, .02, at + 12, 'exp');
-      this.voice(s.voices, bowl * ratio * 1.004, level * .7, at, .02, at + 12, 'exp');
-    }
-    return length;
-  }
-
-  private ocean(s: Session, t: number) {
-    const length = 8 + Math.random() * 3;
-    const crest = .5 + Math.random() * .25;
-    s.swell!.gain.setValueAtTime(.1, t);
-    s.swell!.gain.linearRampToValueAtTime(crest, t + length * .42);
-    s.swell!.gain.linearRampToValueAtTime(.1, t + length);
-    if (s.bar % 2 === 0) this.pad(s, PIANO.chords[(s.bar / 2) % 4].map((note) => hz(PIANO.root / 2, note)), t, length * 2.1, .05);
-    return length;
-  }
-
-  private rain(s: Session, t: number) {
-    const length = 6;
-    s.swell!.gain.setValueAtTime(.5, t);
-    s.swell!.gain.linearRampToValueAtTime(.42 + Math.random() * .2, t + length);
-    // A few soft drops on leaves.
-    const drops = 3 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < drops; i++) {
-      const at = t + Math.random() * length;
-      this.voice(s.voices, 1200 + Math.random() * 900, .025, at, .006, at + .3, 'exp');
-    }
-    if (s.bar % 2 === 0) this.pad(s, MOODS.hujan.chords[(s.bar / 2) % 4].map((note) => hz(MOODS.hujan.root, note)), t, length * 2.2, .045);
-    return length;
-  }
 }
 
 /* ---------- Hook and menu ---------- */
 
-const SOUNDS = Object.keys(soundNames) as Sound[];
-
 // `on` is what is playing right now; the remembered choice ("simbar-music") is what the person last chose.
 // Signing out stops the music but keeps that choice, and signing in again restores it. Signed out, the music
 // never starts by itself: it only plays when someone presses play.
-export function useMusic(season: Season, signedIn: boolean) {
+export function useMusic(signedIn: boolean) {
   const [on, setOn] = useState(false);
-  const [sound, setSoundState] = useState<Sound>(() => { const saved = remembered('simbar-music-sound'); return SOUNDS.find((s) => s === saved) ?? 'musim'; });
+  const [song, setSongState] = useState(() => { const saved = SONGS.findIndex((s) => s.id === remembered('simbar-music-song')); return saved < 0 ? 0 : saved; });
   const [volume, setVolumeState] = useState(() => { const saved = Number(remembered('simbar-music-volume')); return saved >= 0 && saved <= 1 && remembered('simbar-music-volume') !== null ? saved : .8; });
-  const engine = useRef<Engine | null>(null);
-  const latest = useRef({ season, sound, volume });
-  latest.current = { season, sound, volume };
+  const engine = useRef<Guitar | null>(null);
+  const latest = useRef({ song, volume });
+  latest.current = { song, volume };
 
-  const start = (next = latest.current.sound) => {
-    try { (engine.current ??= new Engine()).play(next, latest.current.season, latest.current.volume); } catch { /* no audio support */ }
+  const start = (next = latest.current.song) => {
+    try {
+      engine.current ??= new Guitar();
+      engine.current.onSong = (index) => setSongState(index);
+      engine.current.play(next, latest.current.volume);
+    } catch { /* no audio support */ }
     setOn(true);
   };
-  const play = (next?: Sound) => { remember('simbar-music', 'on'); start(next); };
+  const play = (next?: number) => { remember('simbar-music', 'on'); start(next); };
   // Stop and remember "off" (the person turned it off).
   const stop = () => {
     remember('simbar-music', 'off');
@@ -450,31 +372,31 @@ export function useMusic(season: Season, signedIn: boolean) {
     wasSignedIn.current = signedIn;
   }, [signedIn]);
 
-  useEffect(() => { engine.current?.setSeason(season); }, [season]);
-
   // System media controls (lock screen, media keys, the browser's media hub).
   useEffect(() => {
     const media = navigator.mediaSession;
     if (!media) return;
     media.playbackState = on ? 'playing' : 'paused';
     if (on && 'MediaMetadata' in window) {
-      media.metadata = new MediaMetadata({ title: soundNames[sound], artist: 'SIMBAR · Musik latar', album: 'UPTD Puskesmas Karang Rejo',
+      media.metadata = new MediaMetadata({ title: SONGS[song].title, artist: 'Gitar akustik · SIMBAR', album: 'UPTD Puskesmas Karang Rejo',
         artwork: [{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
     }
     try {
       media.setActionHandler('pause', () => stop());
       media.setActionHandler('stop', () => stop());
       media.setActionHandler('play', () => play());
+      media.setActionHandler('nexttrack', () => chooseSong((latest.current.song + 1) % SONGS.length));
+      media.setActionHandler('previoustrack', () => chooseSong((latest.current.song + SONGS.length - 1) % SONGS.length));
     } catch { /* not supported */ }
-  }, [on, sound]);
+  }, [on, song]);
 
   useEffect(() => () => { engine.current?.close(); engine.current = null; }, []);
 
   const toggle = () => { if (on) stop(); else play(); };
-  const setSound = (next: Sound) => {
-    remember('simbar-music-sound', next);
-    setSoundState(next);
-    if (on && engine.current?.playing) engine.current.setSound(next);
+  const chooseSong = (next: number) => {
+    remember('simbar-music-song', SONGS[next].id);
+    setSongState(next);
+    if (on && engine.current?.playing) engine.current.setSong(next);
     else play(next);
   };
   const setVolume = (next: number) => {
@@ -482,7 +404,7 @@ export function useMusic(season: Season, signedIn: boolean) {
     setVolumeState(next);
     engine.current?.setVolume(next);
   };
-  return { on, sound, volume, toggle, stop, pause, setSound, setVolume };
+  return { on, song, volume, toggle, stop, pause, chooseSong, setVolume };
 }
 
 export type Music = ReturnType<typeof useMusic>;
@@ -503,18 +425,19 @@ export function MusicMenu({ music }: { music: Music }) {
   }, [open]);
   return <div className="season-menu music-menu" ref={box}>
     <button className={'icon-button music-toggle' + (music.on ? ' on' : '')} aria-haspopup="dialog" aria-expanded={open}
-      aria-label="Musik latar" title={music.on ? 'Musik latar: ' + soundNames[music.sound] : 'Musik latar'} onClick={() => setOpen(!open)}>
-      {music.on ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-music" aria-hidden="true" />}
+      aria-label="Musik latar" title={music.on ? 'Gitar akustik: ' + SONGS[music.song].title : 'Musik latar'} onClick={() => setOpen(!open)}>
+      {music.on ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-guitar" aria-hidden="true" />}
     </button>
     {open && <div className="season-list music-panel" role="dialog" aria-label="Musik latar">
+      <p className="music-title"><i className="fas fa-guitar" aria-hidden="true" /> Gitar akustik</p>
       <button className={music.on ? 'secondary music-play' : 'primary music-play'} aria-pressed={music.on} onClick={music.toggle}>
         <i className={music.on ? 'fas fa-stop' : 'fas fa-play'} aria-hidden="true" /> {music.on ? 'Hentikan musik' : 'Putar musik'}
       </button>
-      <div role="radiogroup" aria-label="Pilih suara">
-        {SOUNDS.map((key) => <button key={key} role="radio" aria-checked={music.sound === key} onClick={() => music.setSound(key)}>
-          <i className={soundIcons[key] + ' sound-' + key} aria-hidden="true" />
-          <span>{soundNames[key]}<small>{soundNotes[key]}</small></span>
-          {music.sound === key && <i className="fas fa-check season-check" aria-hidden="true" />}
+      <div role="radiogroup" aria-label="Pilih lagu">
+        {SONGS.map((item, index) => <button key={item.id} role="radio" aria-checked={music.song === index} onClick={() => music.chooseSong(index)}>
+          <span className="song-number" aria-hidden="true">{music.on && music.song === index ? <span className="eq"><b /><b /><b /></span> : index + 1}</span>
+          <span>{item.title}<small>{item.note}</small></span>
+          {music.song === index && <i className="fas fa-check season-check" aria-hidden="true" />}
         </button>)}
       </div>
       <label className="music-volume">
@@ -524,7 +447,7 @@ export function MusicMenu({ music }: { music: Music }) {
           onChange={(event) => music.setVolume(Number(event.target.value) / 100)} />
         <i className="fas fa-volume-high" aria-hidden="true" />
       </label>
-      <p className="music-hint">Tetap berbunyi saat aplikasi diminimize. Berhenti saat aplikasi ditutup atau Anda keluar.</p>
+      <p className="music-hint">Diputar berurutan. Tetap berbunyi saat aplikasi diminimize; berhenti saat aplikasi ditutup atau Anda keluar.</p>
     </div>}
   </div>;
 }

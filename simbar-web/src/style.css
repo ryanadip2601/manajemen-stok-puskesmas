@@ -608,6 +608,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .music-panel .sound-ombak { color: #0ea5e9; }
 .music-panel .sound-hujan { color: #3b82f6; }
 .music-panel .sound-musim { color: #a855f7; }
+.music-title { display: flex; align-items: center; gap: 8px; margin: 4px 10px 8px; font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.music-title i { color: #d97706; }
+.music-panel .song-number { display: grid; flex: none; place-items: center; width: 22px; font-size: .8rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.music-panel .song-number .eq { display: flex; flex-direction: row; }
+.music-panel .song-number .eq { height: 12px; }
+.music-panel .song-number .eq b { width: 2px; }
 .music-volume { display: flex; align-items: center; gap: 10px; margin: 6px 0 0; padding: 10px 10px 4px; border-top: 1px solid var(--border); color: var(--muted); }
 .music-volume input { flex: 1; min-width: 0; accent-color: #10b981; }
 .music-hint { margin: 6px 10px 4px; font-size: .72rem; line-height: 1.4; color: var(--muted); }
