@@ -769,7 +769,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .role-option { flex-direction: row; justify-content: center; gap: 5px; padding: 5px 4px; font-size: .7rem; }
 .role-option i { font-size: .75rem; }
 .side-search { position: relative; margin: 10px 12px 2px; }
-.side-search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #64748b; font-size: .8rem; pointer-events: none; }
+.side-search > i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #64748b; font-size: .8rem; pointer-events: none; }
 .side-search input {
   width: 100%; height: 34px; padding: 0 10px 0 32px; border: 1px solid rgba(71, 85, 105, .6); border-radius: 10px;
   background: rgba(15, 23, 42, .55); color: #e2e8f0; font: inherit; font-size: .84rem;
