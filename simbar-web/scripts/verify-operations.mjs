@@ -27,10 +27,13 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
     CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb, encrypted_password text, updated_at timestamptz);
     CREATE SCHEMA extensions; CREATE FUNCTION extensions.gen_salt(text, integer) RETURNS text LANGUAGE sql AS $$ SELECT 'salt' $$;
-    CREATE FUNCTION extensions.crypt(text, text) RETURNS text LANGUAGE sql AS $$ SELECT 'hash:' || $1 $$;`);
+    CREATE FUNCTION extensions.crypt(text, text) RETURNS text LANGUAGE sql AS $$ SELECT 'hash:' || $1 $$;
+    CREATE SCHEMA net; CREATE TABLE net.calls (url text, body jsonb, headers jsonb);
+    CREATE FUNCTION net.http_post(url text, body jsonb, params jsonb DEFAULT '{}', headers jsonb DEFAULT '{}', timeout_milliseconds integer DEFAULT 5000)
+      RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql'];
+  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -77,10 +80,20 @@ try {
   await db.query(`SELECT public.simbar_item_delete($1)`, [item]);
   await db.query(`SELECT public.simbar_category_delete($1)`, [category]);
 
+  // Push notifications: both people get a device; the stubbed net.http_post records what would be sent.
+  await db.exec(`INSERT INTO simbar.push_settings VALUES ('notify_url', 'https://simbar.example/api/notify'), ('notify_secret', 'uji-rahasia')`);
+  const device = (name) => [`https://push.example/${name}`, 'B'.repeat(87), 'authkey-uji-123', 'uji'];
+  await as(ADMIN);
+  await db.query('SELECT public.simbar_push_subscribe($1, $2, $3, $4)', device('admin'));
+  await as(STAFF);
+  await db.query('SELECT public.simbar_push_subscribe($1, $2, $3, $4)', device('staf'));
+  const pushes = async () => (await db.query('DELETE FROM net.calls RETURNING body, headers')).rows;
+
   // Pengambilan barang: staff submits, warehouse approves (stock drops) or rejects.
   const stocked = (await one('SELECT id, stock FROM simbar.items WHERE stock >= 3 ORDER BY id LIMIT 1'));
   const other = (await one('SELECT id FROM simbar.items WHERE stock >= 1 AND id <> $1 ORDER BY id LIMIT 1', [stocked.id]));
   await as(STAFF);
+  await pushes();
   assert.ok((await one('SELECT public.simbar_pickup_options() AS o')).o.every((row) => row.stock > 0));
   await assert.rejects(db.query('SELECT public.simbar_pickup_list(false, $1, 1)', ['all']), /Akses ditolak/);
   await assert.rejects(db.query('SELECT public.simbar_pickup_submit($1)',
@@ -89,10 +102,20 @@ try {
     [JSON.stringify([{ item_id: stocked.id, quantity: stocked.stock + 1 }])]), /melebihi stok/);
   assert.equal((await one('SELECT public.simbar_pickup_submit($1) AS n',
     [JSON.stringify([{ item_id: stocked.id, quantity: 2, notes: 'uji' }, { item_id: other.id, quantity: 1 }])])).n, 2);
+  // Two items in one submission: one merged notification, only to the warehouse device, with the secret.
+  const sent = await pushes();
+  assert.equal(sent.length, 1, 'one notification per recipient per transaction');
+  assert.equal(sent[0].headers.Authorization, 'Bearer uji-rahasia');
+  assert.deepEqual(sent[0].body.messages.map((m) => m.subscription.endpoint), ['https://push.example/admin']);
+  assert.equal(sent[0].body.messages[0].payload.title, 'Pengambilan barang baru');
+  assert.equal(sent[0].body.messages[0].payload.body, 'Staf Uji mengajukan pengambilan 2 barang.');
+  assert.equal(sent[0].body.messages[0].payload.url, '/?menu=checklist');
+  assert.ok(sent[0].body.messages[0].payload.badge >= 2);
   const mine = (await one(`SELECT public.simbar_pickup_list(true, 'pending', 1) AS l`)).l;
   assert.equal(mine.total, 2);
   const [second, first] = mine.rows.map((row) => row.id).sort((a, b) => b - a);
   await db.query('SELECT public.simbar_pickup_cancel($1)', [second]);
+  assert.equal((await pushes()).length, 0, 'cancelling your own request notifies nobody');
   await assert.rejects(db.query('SELECT public.simbar_pickup_cancel($1)', [second]), /Menunggu/);
 
   await as(ADMIN);
@@ -100,6 +123,11 @@ try {
   const checklist = (await one(`SELECT public.simbar_pickup_list(false, 'pending', 1) AS l`)).l;
   assert.ok(checklist.counts.pending >= 1 && checklist.rows.some((row) => row.id === first));
   await db.query(`SELECT public.simbar_checklist_act($1, 'approve', NULL)`, [first]);
+  // The requester hears about the approval; the admin who approved does not.
+  const approval = await pushes();
+  assert.equal(approval.length, 1);
+  assert.deepEqual(approval[0].body.messages.map((m) => m.subscription.endpoint), ['https://push.example/staf']);
+  assert.equal(approval[0].body.messages[0].payload.title, 'Pengambilan barang disetujui');
   assert.equal(await stockOf(stocked.id), stocked.stock - 2);
   await assert.rejects(db.query(`SELECT public.simbar_checklist_act($1, 'reject', 'x')`, [first]), /sudah diproses/);
   const done = await one('SELECT status, pickup_date IS NOT NULL AS picked FROM simbar.stock_out_requests WHERE id = $1', [first]);
@@ -326,6 +354,19 @@ try {
   await as(NEWBIE);
   assert.deepEqual((await one('SELECT public.simbar_my_status() AS s')).s, { linked: true, approved: false, id: Number(newbie.id), name: 'Pendaftar Uji', role: 'staff' });
   await assert.rejects(db.query(`SELECT public.simbar_dashboard(30)`), /not approved or linked/);
+
+  // The public (signed-out) dashboard: charts and item names only, never people or queues.
+  await as('');
+  const open = (await one('SELECT public.simbar_public_dashboard() AS d')).d;
+  assert.equal(open.stats.total_stock, staffBoard.stats.total_stock);
+  assert.deepEqual(Object.keys(open).sort(), ['aging', 'categories', 'low_stock_items', 'monthly', 'pareto', 'range_days', 'stats']);
+  // Unit accounts such as "Laboratorium" share words with item and category names, so those do not count.
+  const names = (await db.query(`SELECT u.name FROM simbar.users u WHERE length(u.name) > 4
+    AND NOT EXISTS (SELECT 1 FROM simbar.items i WHERE i.name ILIKE '%' || u.name || '%')
+    AND NOT EXISTS (SELECT 1 FROM simbar.categories c WHERE c.name ILIKE '%' || u.name || '%')`)).rows.map((row) => row.name);
+  const text = JSON.stringify(open);
+  const leaked = names.filter((name) => text.includes(name));
+  assert.deepEqual(leaked, [], 'the public dashboard must not contain any user name');
   await as(STAFF);
   await assert.rejects(db.query(`SELECT public.simbar_users_list('all', NULL, '', 1)`), /Akses ditolak/);
   await db.query(`SELECT public.simbar_session_event('login', 'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile')`);

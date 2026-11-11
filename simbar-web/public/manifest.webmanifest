@@ -1,0 +1,18 @@
+{
+  "name": "SIMBAR · Puskesmas Karang Rejo",
+  "short_name": "SIMBAR",
+  "description": "Sistem Manajemen Barang UPTD Puskesmas Karang Rejo",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "id",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

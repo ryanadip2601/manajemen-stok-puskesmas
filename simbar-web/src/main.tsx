@@ -15,6 +15,10 @@ import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account'
 import { client, rpc } from './supabase';
 import { Users } from './Users';
 import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useMusic, useSeason, type SeasonChoice } from './effects';
+import { HeaderClock } from './clock';
+import { DeviceApp, forgetThisDevice, pushSupported, registerServiceWorker, setBadge } from './push';
+
+registerServiceWorker();
 import './style.css';
 
 const auth = client?.auth ?? null;
@@ -88,7 +92,14 @@ function menuFor(role: Summary['profile']['role']): MenuGroup[] {
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
-type Status = { linked: boolean; approved: boolean; id?: number; name?: string; role?: string };
+const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
+  'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'profil'];
+function linkedSection(search: string) {
+  const wanted = new URLSearchParams(search).get('menu');
+  return SECTIONS.find((section) => section === wanted) ?? null;
+}
+
+type Status ={ linked: boolean; approved: boolean; id?: number; name?: string; role?: string };
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -135,25 +146,28 @@ function App() {
 
   async function signOut() {
     setNotice('');
-    if (status?.approved) await rpc('simbar_session_event', { event: 'logout', agent: navigator.userAgent }).catch(() => {});
+    if (status?.approved) {
+      await forgetThisDevice();
+      await rpc('simbar_session_event', { event: 'logout', agent: navigator.userAgent }).catch(() => {});
+    }
     const result = await auth?.signOut({ scope: 'local' }).catch(() => null);
     if (!result || result.error) setNotice('Gagal keluar. Coba lagi.');
   }
 
+  const controls: Ambience = { theme, toggleTheme, season: ambience.choice, setSeason: ambience.setChoice, music, toggleMusic };
   // The canvas and cursor stay mounted in the same place while the screen below them changes.
   return <>
     <SeasonCanvas season={ambience.season} />
     <CursorTrail />
     {ready && session && !recovery && status?.approved
-      ? <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} notice={notice} signOut={signOut}
-        theme={theme} toggleTheme={toggleTheme} season={ambience.choice} setSeason={ambience.setChoice} music={music} toggleMusic={toggleMusic} />
+      ? <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} notice={notice} signOut={signOut} controls={controls} />
+      : ready && !session ? <PublicHome notice={notice} controls={controls} />
       : <div className="auth-shell">
     {session && <button className="logout auth-signout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>}
     <main className="auth-main">
       {notice && <p className="notice" role="alert">{notice}</p>}
       {!ready ? <p className="auth-status" role="status">Memuat SIMBAR…</p>
         : recovery && session ? <NewPassword done={() => { setRecovery(false); setNotice(''); window.history.replaceState(null, '', '/'); }} />
-        : !session ? <AuthScreen />
         : !status ? <p className="auth-status" role="status">Memeriksa akun…</p>
         : <PendingAccount linked={status.linked} name={status.name} />}
     </main>
@@ -162,17 +176,90 @@ function App() {
   </>;
 }
 
-function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, season, setSeason, music, toggleMusic }: {
-  session: Session; selfId: number | null; notice: string; signOut: () => void; theme: Theme; toggleTheme: () => void;
-  season: SeasonChoice; setSeason: (choice: SeasonChoice) => void; music: boolean; toggleMusic: () => void;
+type Ambience = {
+  theme: Theme; toggleTheme: () => void; season: SeasonChoice; setSeason: (choice: SeasonChoice) => void; music: boolean; toggleMusic: () => void;
+};
+
+// Season, music and light/dark buttons, shared by the public page and the signed-in header.
+function AmbientControls({ controls }: { controls: Ambience }) {
+  const { theme, toggleTheme, season, setSeason, music, toggleMusic } = controls;
+  return <>
+    <SeasonMenu choice={season} onChange={setSeason} />
+    <button className={'icon-button music-toggle' + (music ? ' on' : '')} onClick={toggleMusic} aria-pressed={music}
+      aria-label="Musik latar" title={music ? 'Matikan musik latar' : 'Nyalakan musik latar'}>
+      {music ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-music" aria-hidden="true" />}
+    </button>
+    <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Pakai mode terang' : 'Pakai mode gelap'}
+      title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}>
+      <i className={theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'} aria-hidden="true" />
+    </button>
+  </>;
+}
+
+// What everyone sees before signing in: the public charts, with the sign-in form one tap away in the header.
+function PublicHome({ notice, controls }: { notice: string; controls: Ambience }) {
+  const [login, setLogin] = useState(false);
+  useEffect(() => {
+    if (!login) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setLogin(false); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [login]);
+  return <div className="public-shell">
+    <header className="topbar public-topbar">
+      <div className="public-brand">
+        <span className="logo-tile small" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
+        <div><strong className="gradient-text">SIMBAR</strong><span>Puskesmas Karang Rejo</span></div>
+      </div>
+      <HeaderClock />
+      <AmbientControls controls={controls} />
+      <button className="primary login-button" onClick={() => setLogin(true)}>
+        <i className="fas fa-right-to-bracket" aria-hidden="true" /><span>Masuk</span>
+      </button>
+    </header>
+    <main className="content public-content">
+      {notice && <p className="notice" role="alert">{notice}</p>}
+      <section className="public-hero">
+        <p className="eyebrow">Inventaris &amp; pemeliharaan</p>
+        <h1>Dashboard SIMBAR</h1>
+        <p>Ringkasan stok dan aset UPTD Puskesmas Karang Rejo. Masuk untuk mengelola barang, permintaan, dan aset.</p>
+      </section>
+      <div className="page"><Overview publicView /></div>
+    </main>
+    <footer className="app-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
+    {login && <div className="login-overlay" role="dialog" aria-modal="true" aria-label="Masuk ke SIMBAR"
+      onClick={(event) => { if (event.target === event.currentTarget) setLogin(false); }}>
+      <div className="login-dialog">
+        <button className="icon-button login-close" onClick={() => setLogin(false)} aria-label="Tutup"><i className="fas fa-xmark" aria-hidden="true" /></button>
+        <AuthScreen />
+      </div>
+    </div>}
+  </div>;
+}
+
+function Dashboard({ session, selfId, notice, signOut, controls }: {
+  session: Session; selfId: number | null; notice: string; signOut: () => void; controls: Ambience;
 }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<Section>('summary');
+  // A tapped notification opens the app at /?menu=<section>.
+  const [section, setSection] = useState<Section>(() => linkedSection(window.location.search) ?? 'summary');
   const [reload, setReload] = useState(0);
   const [mini, setMini] = useState(() => remembered('simbar-sidebar') === 'mini');
   const [drawer, setDrawer] = useState(false);
 
   useEffect(() => remember('simbar-sidebar', mini ? 'mini' : 'full'), [mini]);
+
+  useEffect(() => {
+    if (window.location.search) window.history.replaceState(null, '', '/');
+    if (pushSupported()) rpc<number>('simbar_my_badge').then(setBadge).catch(() => {});
+    const opened = (event: MessageEvent) => {
+      if (event.data?.type !== 'simbar-open') return;
+      const target = linkedSection(new URL(event.data.url).search);
+      if (target) go(target);
+    };
+    navigator.serviceWorker?.addEventListener('message', opened);
+    return () => navigator.serviceWorker?.removeEventListener('message', opened);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -190,6 +277,10 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, seaso
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
     : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === section)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
+  // A link to a page this role cannot open falls back to the dashboard.
+  useEffect(() => {
+    if (groups.length && section !== 'profil' && !groups.some((group) => group.items.some((item) => item.id === section))) setSection('summary');
+  }, [groups.length, section]);
 
   function go(next: Section) {
     setSection(next);
@@ -230,16 +321,9 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, seaso
     <div className="main-area">
       <header className="topbar">
         <button className="icon-button" onClick={toggleMenu} aria-label="Buka atau tutup menu"><i className="fas fa-bars" aria-hidden="true" /></button>
-        <div className="topbar-title"><h1 key={section}>{current.label}</h1><p>{current.group}</p></div>
-        <SeasonMenu choice={season} onChange={setSeason} />
-        <button className={'icon-button music-toggle' + (music ? ' on' : '')} onClick={toggleMusic} aria-pressed={music}
-          aria-label="Musik latar" title={music ? 'Matikan musik latar' : 'Nyalakan musik latar'}>
-          {music ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-music" aria-hidden="true" />}
-        </button>
-        <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Pakai mode terang' : 'Pakai mode gelap'}
-          title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}>
-          <i className={theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'} aria-hidden="true" />
-        </button>
+        <div className="topbar-title"><h1 key={section}>{current.label}</h1>
+          <p><span className="crumb">{current.group}</span><HeaderClock /></p></div>
+        <AmbientControls controls={controls} />
         <button className="logout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>
       </header>
       <main className="content">
@@ -253,7 +337,7 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, seaso
     {section === 'aset' ? <Assets warehouse={warehouse} />
       : section === 'laporan' ? <Laporan />
       : section === 'users' ? <Users selfId={selfId} />
-      : section === 'profil' ? <ProfilePage />
+      : section === 'profil' ? <><ProfilePage /><DeviceApp /></>
       : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
       : section === 'pickup' ? <MyPickups />
@@ -265,7 +349,7 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, seaso
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
       : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} />
-      : <Overview isAdmin={profile?.role === 'admin'} go={(target) => go(target as Section)} />}
+      : <><DeviceApp compact /><Overview isAdmin={profile?.role === 'admin'} go={(target) => go(target as Section)} /></>}
     </div>
         </>}
       </main>

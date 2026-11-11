@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BentoTitle, CountUp, GlowCard, MiniBars } from './bento';
+import { ClockCard } from './clock';
 import { GroupedBars, RankedBars } from './charts';
 import { rpc } from './supabase';
 
@@ -9,8 +10,8 @@ type Board = {
   low_stock_items: { id: number; code: string; name: string; stock: number; minimum: number; unit: string }[];
   monthly: { month: string; stock_in: number; stock_out: number }[];
   categories: { name: string; items: number; stock: number }[];
-  top_items: { name: string; stock: number; unit: string }[];
-  recent: { kind: 'in' | 'out'; id: number; date: string; quantity: number; name: string; unit: string; petugas: string | null }[];
+  top_items?: { name: string; stock: number; unit: string }[];
+  recent?: { kind: 'in' | 'out'; id: number; date: string; quantity: number; name: string; unit: string; petugas: string | null }[];
   queues?: Record<'pending_pickup' | 'pending_bhp' | 'pending_usulan' | 'pending_pemeliharaan' | 'pending_users', number>;
   funnel?: { total: number; pending: number; approved: number; completed: number; rejected: number; cancelled: number;
     avg_approval_hours: number; processed_within_24h: number; processed: number };
@@ -23,15 +24,16 @@ const number = new Intl.NumberFormat('id-ID');
 const monthFormat = new Intl.DateTimeFormat('id-ID', { month: 'short', year: '2-digit', timeZone: 'UTC' });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
 
-export function Overview({ go, isAdmin }: { go: (section: Section) => void; isAdmin: boolean }) {
+// Signed in: the full dashboard. publicView: the charts anyone may see before signing in (no people, no queues).
+export function Overview({ go, isAdmin = false, publicView = false }: { go?: (section: Section) => void; isAdmin?: boolean; publicView?: boolean }) {
   const [range, setRange] = useState(30);
   const [state, setState] = useState<{ data?: Board; error?: string }>({});
   useEffect(() => {
     let active = true;
-    rpc<Board>('simbar_dashboard', { range_days: range })
+    (publicView ? rpc<Board>('simbar_public_dashboard') : rpc<Board>('simbar_dashboard', { range_days: range }))
       .then((data) => active && setState({ data })).catch((error: Error) => active && setState({ error: error.message }));
     return () => { active = false; };
-  }, [range]);
+  }, [range, publicView]);
 
   if (state.error) return <p className="notice" role="alert">{state.error}</p>;
   if (!state.data) return <p role="status">Memuat ringkasan…</p>;
@@ -58,17 +60,16 @@ export function Overview({ go, isAdmin }: { go: (section: Section) => void; isAd
           series={[{ name: 'Masuk', values: data.monthly.map((entry) => Number(entry.stock_in)) },
             { name: 'Keluar', values: data.monthly.map((entry) => Number(entry.stock_out)) }]} />
       </GlowCard>
+      <GlowCard accent="cyan">
+        <BentoTitle icon="fa-clock">Waktu</BentoTitle>
+        <ClockCard />
+      </GlowCard>
       <GlowCard accent="emerald">
         <BentoTitle icon="fa-cubes">Total stok</BentoTitle>
         <CountUp value={data.stats.total_stock} className="bento-number" />
+        <p className="bento-note">{number.format(data.stats.total_items)} jenis barang · {number.format(data.stats.categories)} kategori</p>
         <MiniBars values={data.monthly.map((entry) => Number(entry.stock_in))} label="Barang masuk per bulan, 6 bulan terakhir" />
-        <p className="bento-note">Barang masuk per bulan</p>
-      </GlowCard>
-      <GlowCard accent="cyan">
-        <BentoTitle icon="fa-box">Jenis barang</BentoTitle>
-        <CountUp value={data.stats.total_items} className="bento-number" />
-        <p className="bento-note">dalam {number.format(data.stats.categories)} kategori</p>
-        <button className="bento-link" onClick={() => go('items')}>Lihat data barang <i className="fas fa-arrow-right" aria-hidden="true" /></button>
+        {go && <button className="bento-link" onClick={() => go('items')}>Lihat data barang <i className="fas fa-arrow-right" aria-hidden="true" /></button>}
       </GlowCard>
       <GlowCard accent={data.stats.low_stock ? 'rose' : 'emerald'}>
         <BentoTitle icon="fa-triangle-exclamation">Stok menipis</BentoTitle>
@@ -82,13 +83,13 @@ export function Overview({ go, isAdmin }: { go: (section: Section) => void; isAd
         <BentoTitle icon="fa-building">Aset tercatat</BentoTitle>
         <CountUp value={data.stats.assets} className="bento-number" />
         <p className="bento-note">Barang aset di semua ruangan</p>
-        <button className="bento-link" onClick={() => go('aset')}>Lihat barang aset <i className="fas fa-arrow-right" aria-hidden="true" /></button>
+        {go && <button className="bento-link" onClick={() => go('aset')}>Lihat barang aset <i className="fas fa-arrow-right" aria-hidden="true" /></button>}
       </GlowCard>
       {queues && <GlowCard accent="fuchsia" className="bento-wide">
         <BentoTitle icon="fa-bell" right={waiting > 0 && <span className="bento-live"><span className="dot" />{number.format(waiting)} menunggu</span>}>
           Perlu ditindaklanjuti</BentoTitle>
         <ul className="bento-tiles">{queues.map(([key, label, section, icon, color]) => <li key={key}>
-          <button className={'bento-tile c-' + color + (Number(data.queues![key]) > 0 ? ' has' : '')} onClick={() => go(section)}>
+          <button className={'bento-tile c-' + color + (Number(data.queues![key]) > 0 ? ' has' : '')} onClick={() => go?.(section)}>
             <i className={'fas ' + icon} aria-hidden="true" />
             <strong>{number.format(data.queues![key])}</strong>
             <span>{label}</span>
@@ -109,6 +110,16 @@ export function Overview({ go, isAdmin }: { go: (section: Section) => void; isAd
           .map((entry) => ({ label: entry.name, value: Number(entry.stock), note: `(${number.format(entry.items)} barang)` }))} />
       </section>
     </div>
+    {publicView && data.pareto && data.aging && <div className="overview-grid">
+      <section className="panel">
+        <RankedBars title={`Barang paling banyak keluar (${data.range_days} hari)`}
+          rows={data.pareto.map((entry) => ({ label: entry.name, value: Number(entry.total_out), note: entry.unit }))} />
+      </section>
+      <section className="panel">
+        <RankedBars title="Umur pergerakan stok (sejak transaksi terakhir)"
+          rows={Object.entries(data.aging).map(([label, value]) => ({ label, value: Number(value), note: 'barang' }))} />
+      </section>
+    </div>}
     {data.funnel && data.pareto && data.aging && <>
       <div className="panel-head insight-head">
         <h2>Insight pengambilan barang</h2>
@@ -138,7 +149,7 @@ export function Overview({ go, isAdmin }: { go: (section: Section) => void; isAd
         </section>
         <section className="panel">
           <h2>Transaksi terbaru</h2>
-          <ul className="photo-list">{data.recent.map((entry) => <li key={entry.kind + entry.id}>
+          <ul className="photo-list">{(data.recent ?? []).map((entry) => <li key={entry.kind + entry.id}>
             <div><strong>{entry.name}</strong><span>{dateFormat.format(new Date(entry.date))} · {entry.petugas ?? '—'}</span></div>
             <span className={entry.kind === 'in' ? 'badge completed' : 'badge diproses'}>{entry.kind === 'in' ? '+' : '−'}{number.format(entry.quantity)} {entry.unit}</span>
           </li>)}</ul>
