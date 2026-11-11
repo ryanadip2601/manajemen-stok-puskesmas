@@ -17,15 +17,17 @@ $function$;
 
 -- Every request of the given kinds, with its bucket: menunggu (needs the warehouse), revisi (back with the requester),
 -- selesai, ditolak, dibatalkan.
+-- The row type gained photo columns; plpgsql callers are not tracked by Postgres, so dropping is safe.
+DROP FUNCTION IF EXISTS simbar.queue_rows(text[]);
 CREATE OR REPLACE FUNCTION simbar.queue_rows(kinds text[])
 RETURNS TABLE (kind text, id bigint, code text, title text, requester text, jumlah integer, satuan text, tanggal date,
-               status text, bucket text, note text, created_at timestamp without time zone)
+               status text, bucket text, note text, created_at timestamp without time zone, photo text, aset_foto text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
     SELECT 'pickup', r.id, NULL, i.name, u.name, r.quantity, un.symbol, r.request_date, r.status,
            CASE r.status WHEN 'pending' THEN 'menunggu' WHEN 'approved' THEN 'menunggu' WHEN 'completed' THEN 'selesai'
                 WHEN 'rejected' THEN 'ditolak' ELSE 'dibatalkan' END,
-           CASE WHEN r.status = 'rejected' THEN r.reject_reason ELSE r.notes END, r.created_at
+           CASE WHEN r.status = 'rejected' THEN r.reject_reason ELSE r.notes END, r.created_at, i.photo, NULL
     FROM simbar.stock_out_requests r
     JOIN simbar.items i ON i.id = r.item_id
     LEFT JOIN simbar.units un ON un.id = i.unit_id
@@ -36,7 +38,7 @@ AS $function$
            CASE WHEN p.status IN ('pending', 'diproses') THEN 'menunggu' WHEN p.status = 'revisi' THEN 'revisi'
                 WHEN p.status = 'ditolak' THEN 'ditolak' ELSE 'selesai' END,
            CASE p.status WHEN 'revisi' THEN p.permintaan_revisi WHEN 'ditolak' THEN p.alasan_penolakan ELSE p.keterangan END,
-           p.created_at
+           p.created_at, i.photo, NULL
     FROM simbar.permintaan_barang p
     LEFT JOIN simbar.items i ON i.id = coalesce(p.created_item_id, p.item_id)
     LEFT JOIN simbar.units un ON un.id = i.unit_id
@@ -47,14 +49,14 @@ AS $function$
            CASE WHEN s.status IN ('pending', 'diproses') THEN 'menunggu' WHEN s.status = 'revisi' THEN 'revisi'
                 WHEN s.status = 'ditolak' THEN 'ditolak' ELSE 'selesai' END,
            CASE s.status WHEN 'revisi' THEN s.permintaan_revisi WHEN 'ditolak' THEN s.alasan_penolakan ELSE s.keterangan_user END,
-           s.created_at
+           s.created_at, NULL, NULL
     FROM simbar.usulan_penerimaan_barang s
     LEFT JOIN simbar.users u ON u.id = s.user_id
     WHERE 'usulan' = ANY (kinds)
     UNION ALL
     SELECT 'pemeliharaan', m.id, a.kode_aset, a.nama_aset, u.name, NULL, NULL, m.tanggal_pemeliharaan, m.status,
            CASE WHEN m.status IN ('menunggu', 'proses') THEN 'menunggu' ELSE 'selesai' END,
-           m.deskripsi_masalah, m.created_at
+           m.deskripsi_masalah, m.created_at, NULL, a.foto
     FROM simbar.pemeliharaan_aset m
     JOIN simbar.barang_aset a ON a.id = m.barang_aset_id
     LEFT JOIN simbar.users u ON u.id = m.created_by

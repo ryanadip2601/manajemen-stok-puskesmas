@@ -1065,3 +1065,14 @@ body.printing-labels .label-print { display: block; }
 }
 .photo-viewer-close:hover { background: rgba(255, 255, 255, .26); }
 @media (prefers-reduced-motion: reduce) { .photo-viewer, .zoomable { animation: none; transition: none; } .zoomable:hover { transform: none; } }
+
+/* ---------- Barang photos in lists (dashboard, notices, details) ---------- */
+.photo-list li > .item-thumb { flex: none; }
+.photo-list li:has(> .item-thumb) { justify-content: flex-start; gap: 12px; }
+.photo-list li:has(> .item-thumb) > div { flex: 1; min-width: 0; }
+.mini-with-thumb { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.mini-with-thumb .item-thumb { border-radius: 6px; }
+.notice-items { list-style: none; padding: 0; display: grid; gap: 6px; }
+.notice-items li { display: flex; align-items: center; gap: 10px; }
+.detail-thumb { display: inline-block; vertical-align: middle; margin-right: 10px; }
+.photo-list li span.item-thumb, .notice-items span.item-thumb { display: inline-grid; font-size: .9rem; }

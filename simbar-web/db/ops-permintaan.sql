@@ -44,7 +44,7 @@ BEGIN
     WITH scoped AS MATERIALIZED (
         SELECT p.* FROM simbar.permintaan_barang p WHERE NOT mine_only OR p.user_id = actor.id
     ), matched AS MATERIALIZED (
-        SELECT p.id, p.kode_permintaan AS code, p.tipe, p.status, p.prioritas, p.jumlah, p.nama_barang AS name,
+        SELECT p.id, p.kode_permintaan AS code, p.tipe, p.status, p.prioritas, p.jumlah, p.nama_barang AS name, i.photo,
                p.tanggal_permintaan AS date, p.created_at, i.stock, u.symbol AS unit, r.nama_ruangan AS room,
                req.name AS requested_by, v.name AS verified_by
         FROM scoped p
@@ -85,7 +85,7 @@ BEGIN
             'foto', CASE WHEN p.tipe_foto_barang = 'url' THEN p.foto_barang END,
             'fotoRef', CASE WHEN p.foto_barang LIKE 'media:%' THEN p.foto_barang END,
             'hasUploadedPhoto', p.tipe_foto_barang = 'upload' AND p.foto_barang IS NOT NULL AND p.foto_barang NOT LIKE 'media:%',
-            'item', CASE WHEN i.id IS NOT NULL THEN jsonb_build_object('name', i.name, 'code', i.code, 'stock', i.stock,
+            'item', CASE WHEN i.id IS NOT NULL THEN jsonb_build_object('name', i.name, 'code', i.code, 'stock', i.stock, 'photo', i.photo,
                 'minimum', i.minimum_stock, 'unit', u.symbol) END,
             'createdItem', (SELECT jsonb_build_object('code', c.code, 'name', c.name) FROM simbar.items c WHERE c.id = p.created_item_id),
             'mine', p.user_id = actor.id)
@@ -308,7 +308,7 @@ AS $function$
 DECLARE
     actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang', 'staff']);
 BEGIN
-    RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'code', p.kode_permintaan, 'name', coalesce(i.name, p.nama_barang),
+    RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'code', p.kode_permintaan, 'name', coalesce(i.name, p.nama_barang), 'photo', i.photo,
             'jumlah', p.jumlah, 'stock', coalesce(i.stock, 0)) ORDER BY p.updated_at DESC NULLS LAST, p.id DESC), '[]')
         FROM simbar.permintaan_barang p LEFT JOIN simbar.items i ON i.id = p.item_id
         WHERE p.user_id = actor.id AND p.tipe = 'restok' AND p.status = 'tersedia' AND p.notified_at IS NULL);

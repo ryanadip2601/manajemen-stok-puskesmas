@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PhotoField, StoredPhoto } from './media';
 import { rpc } from './supabase';
+import { ItemThumb } from './media';
 import { ItemPicker } from './ItemPicker';
 
 type Status = 'pending' | 'diproses' | 'disetujui' | 'ditolak' | 'revisi' | 'tersedia' | 'dibaca';
@@ -12,6 +13,7 @@ type Options = { rooms: Option[]; items: ItemOption[]; categories: Option[]; uni
 type Row = {
   id: number; code: string; tipe: Tipe; status: Status; prioritas: Prioritas; jumlah: number; name: string; date: string;
   stock: number | null; unit: string | null; room: string | null; requested_by: string; verified_by: string | null;
+  photo?: string | null;
 };
 type Page = { counts: Record<Status, number>; total: number; rows: Row[] };
 type Detail = {
@@ -19,10 +21,10 @@ type Detail = {
   jumlah: number; prioritas: Prioritas; keterangan: string | null; date: string; catatanAdmin: string | null;
   alasanPenolakan: string | null; permintaanRevisi: string | null; requestedBy: string; verifiedBy: string | null;
   foto: string | null; fotoRef: string | null; hasUploadedPhoto: boolean; mine: boolean;
-  item: { name: string; code: string; stock: number; minimum: number; unit: string } | null;
+  item: { name: string; code: string; stock: number; minimum: number; unit: string ; photo?: string | null } | null;
   createdItem: { code: string; name: string } | null;
 };
-type Notice = { id: number; code: string; name: string; jumlah: number; stock: number };
+type Notice = { id: number; code: string; name: string; jumlah: number; stock: number; photo?: string | null };
 
 const perPage = 15;
 const number = new Intl.NumberFormat('id-ID');
@@ -87,7 +89,8 @@ export function RestockNotices() {
   if (!notices.length) return null;
   return <section className="success notice-box" role="status">
     <strong>Barang restok Anda sudah tersedia</strong>
-    <ul>{notices.map((notice) => <li key={notice.id}>{notice.name} ({notice.code}) — stok sekarang {number.format(notice.stock)}</li>)}</ul>
+    <ul className="notice-items">{notices.map((notice) => <li key={notice.id}><ItemThumb url={notice.photo} name={notice.name} size={32} />
+      <span>{notice.name} ({notice.code}) — stok sekarang {number.format(notice.stock)}</span></li>)}</ul>
     <button className="secondary" onClick={() => rpc('simbar_permintaan_mark_read').then(() => setNotices([])).catch(() => {})}>Tandai sudah dibaca</button>
   </section>;
 }
@@ -118,10 +121,11 @@ function Filters({ counts, status, setStatus, tipe, setTipe, onSearch }: {
 function Table({ page, mine, open }: { page: Page; mine: boolean; open: (id: number) => void }) {
   return <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Tabel permintaan barang">
     <table>
-      <thead><tr><th scope="col">Barang</th><th scope="col">Jenis</th><th scope="col">Jumlah</th>
+      <thead><tr><th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Barang</th><th scope="col">Jenis</th><th scope="col">Jumlah</th>
         {!mine && <th scope="col">Pemohon</th>}<th scope="col">Tanggal</th><th scope="col">Status</th>
         <th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
       <tbody>{page.rows.map((row) => <tr key={row.id}>
+        <td className="thumb-cell"><ItemThumb url={row.photo} name={row.name} /></td>
         <th scope="row"><strong>{row.name}</strong><span>{row.code}{row.room ? ' · ' + row.room : ''}</span></th>
         <td>{tipeLabels[row.tipe]}<span className="cell-note">Prioritas {prioritasLabels[row.prioritas].toLowerCase()}</span></td>
         <td>{number.format(row.jumlah)} {row.unit ?? ''}{row.stock !== null && <span className="cell-note">stok {number.format(row.stock)}</span>}</td>
@@ -148,7 +152,7 @@ function DetailView({ detail }: { detail: Detail }) {
     <div><dt>Kode</dt><dd>{detail.code}</dd></div>
     <div><dt>Jenis</dt><dd>{tipeLabels[detail.tipe]}</dd></div>
     <div><dt>Status</dt><dd><span className={'badge ' + detail.status}>{statusLabels[detail.status]}</span></dd></div>
-    <div><dt>Barang</dt><dd>{detail.name}{detail.item && ` (${detail.item.code}) — stok ${number.format(detail.item.stock)} ${detail.item.unit}, minimum ${number.format(detail.item.minimum)}`}</dd></div>
+    <div><dt>Barang</dt><dd>{detail.item?.photo !== undefined && <span className="detail-thumb"><ItemThumb url={detail.item.photo} name={detail.name} size={72} /></span>}{detail.name}{detail.item && ` (${detail.item.code}) — stok ${number.format(detail.item.stock)} ${detail.item.unit}, minimum ${number.format(detail.item.minimum)}`}</dd></div>
     <div><dt>Jumlah</dt><dd>{number.format(detail.jumlah)}</dd></div>
     <div><dt>Prioritas</dt><dd>{prioritasLabels[detail.prioritas]}</dd></div>
     {detail.room && <div><dt>Ruangan</dt><dd>{detail.room}</dd></div>}

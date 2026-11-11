@@ -27,7 +27,8 @@ BEGIN
         SELECT 'pickup'::text AS kind, r.id, NULL::text AS code, i.name::text AS title, r.quantity AS jumlah, un.symbol::text AS satuan,
                r.request_date AS tanggal, r.status::text AS status,
                CASE r.status WHEN 'pending' THEN 'menunggu' WHEN 'rejected' THEN 'ditolak' WHEN 'cancelled' THEN 'dibatalkan' ELSE 'disetujui' END AS bucket,
-               CASE WHEN r.status = 'rejected' THEN r.reject_reason ELSE r.notes END AS note, r.created_at
+               CASE WHEN r.status = 'rejected' THEN r.reject_reason ELSE r.notes END AS note, r.created_at,
+               i.photo::text AS photo, NULL::text AS aset_foto
         FROM simbar.stock_out_requests r
         JOIN simbar.items i ON i.id = r.item_id
         LEFT JOIN simbar.units un ON un.id = i.unit_id
@@ -37,7 +38,7 @@ BEGIN
                CASE WHEN p.status IN ('pending', 'diproses') THEN 'menunggu' WHEN p.status = 'revisi' THEN 'revisi'
                     WHEN p.status = 'ditolak' THEN 'ditolak' ELSE 'disetujui' END,
                CASE p.status WHEN 'revisi' THEN p.permintaan_revisi WHEN 'ditolak' THEN p.alasan_penolakan ELSE p.catatan_admin END,
-               p.created_at
+               p.created_at, i.photo::text, NULL::text
         FROM simbar.permintaan_barang p
         LEFT JOIN simbar.items i ON i.id = coalesce(p.created_item_id, p.item_id)
         LEFT JOIN simbar.units un ON un.id = i.unit_id
@@ -47,13 +48,13 @@ BEGIN
                CASE WHEN s.status IN ('pending', 'diproses') THEN 'menunggu' WHEN s.status = 'revisi' THEN 'revisi'
                     WHEN s.status = 'ditolak' THEN 'ditolak' ELSE 'disetujui' END,
                CASE s.status WHEN 'revisi' THEN s.permintaan_revisi WHEN 'ditolak' THEN s.alasan_penolakan ELSE s.catatan_admin END,
-               s.created_at
+               s.created_at, NULL::text, NULL::text
         FROM simbar.usulan_penerimaan_barang s
         WHERE s.user_id = actor.id
         UNION ALL
         SELECT 'pemeliharaan', m.id, a.kode_aset::text, a.nama_aset::text, NULL::integer, NULL::text, m.tanggal_pemeliharaan, m.status::text,
                CASE WHEN m.status IN ('menunggu', 'proses') THEN 'menunggu' ELSE 'disetujui' END,
-               coalesce(m.tindakan_perbaikan, m.deskripsi_masalah), m.created_at
+               coalesce(m.tindakan_perbaikan, m.deskripsi_masalah), m.created_at, NULL::text, a.foto::text
         FROM simbar.pemeliharaan_aset m
         JOIN simbar.barang_aset a ON a.id = m.barang_aset_id
         WHERE m.created_by = actor.id

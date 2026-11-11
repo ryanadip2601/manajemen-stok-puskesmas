@@ -38,7 +38,7 @@ BEGIN
         SELECT r.* FROM simbar.stock_out_requests r WHERE NOT mine_only OR r.user_id = actor.id
     ), matched AS MATERIALIZED (
         SELECT r.id, r.status, r.quantity, r.notes, r.request_date, r.pickup_date, r.processed_at, r.reject_reason,
-               r.created_at, i.name AS item, i.code, i.stock, u.symbol AS unit, req.name AS requested_by, p.name AS processed_by
+               r.created_at, i.name AS item, i.code, i.stock, i.photo, u.symbol AS unit, req.name AS requested_by, p.name AS processed_by
         FROM scoped r
         JOIN simbar.items i ON i.id = r.item_id
         JOIN simbar.units u ON u.id = i.unit_id

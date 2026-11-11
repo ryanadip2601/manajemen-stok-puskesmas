@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { rpc } from './supabase';
+import { ItemThumb, PrivateThumb } from './media';
 import { Checklist } from './Pickup';
 import { AdminPermintaan } from './Permintaan';
 import { AdminUsulan } from './Usulan';
@@ -12,6 +13,7 @@ type Bucket = 'all' | 'menunggu' | 'revisi' | 'selesai' | 'ditolak' | 'dibatalka
 type Row = {
   kind: QueueKind; id: number; code: string | null; title: string; requester: string | null; jumlah: number | null;
   satuan: string | null; tanggal: string; status: string; bucket: Exclude<Bucket, 'all'>; note: string | null;
+  photo?: string | null; aset_foto?: string | null;
 };
 type Queue = { kinds: QueueKind[]; waiting: Record<'all' | QueueKind, number>; counts: Record<Bucket, number>; total: number; rows: Row[] };
 
@@ -107,11 +109,13 @@ function QueueList({ version, open, openKind }: { version: number; open: (row: R
       : !data.total ? <p role="status">{bucket === 'menunggu' ? 'Tidak ada yang menunggu. Semua sudah diproses.' : 'Tidak ada data pada filter ini.'}</p> : <>
         <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Tabel antrean verifikasi">
           <table className="request-table">
-            <thead><tr><th scope="col">Barang</th><th scope="col">Jenis</th><th scope="col">Pengaju</th><th scope="col">Jumlah</th>
+            <thead><tr><th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Barang</th><th scope="col">Jenis</th><th scope="col">Pengaju</th><th scope="col">Jumlah</th>
               <th scope="col">Tanggal</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
             <tbody>{data.rows.map((row) => {
               const age = ageDays(row.tanggal);
               return <tr key={row.kind + row.id}>
+                <td className="thumb-cell">{row.aset_foto ? <PrivateThumb reference={row.aset_foto} alt={'Foto ' + row.title} size={96} display={44} caption={row.title} />
+                  : <ItemThumb url={row.photo} name={row.title} />}</td>
                 <th scope="row"><strong>{row.title}</strong>{row.code && <span>{row.code}</span>}</th>
                 <td><span className={'request-kind c-' + KINDS[row.kind].color}>
                   <i className={'fas ' + KINDS[row.kind].icon} aria-hidden="true" /> {KINDS[row.kind].label}</span></td>

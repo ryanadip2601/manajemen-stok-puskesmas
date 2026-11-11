@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { rpc } from './supabase';
+import { ItemThumb } from './media';
 import { ItemPicker } from './ItemPicker';
 import { ItemPhotoEditor } from './FotoBarang';
 
@@ -16,6 +17,8 @@ type ItemDetail = {
 type Movement = {
   id: number; date: string; quantity: number; notes: string | null; item_id: number;
   code: string; name: string; unit: string; recorded_by: string | null;
+
+  photo?: string | null;
 };
 type MovementPage = { total: number; quantity: number; rows: Movement[] };
 
@@ -253,9 +256,10 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
         <p role="status">{number.format(total)} transaksi, total {number.format(state.data.quantity)} unit.</p>
         <div className="inventory-scroll" tabIndex={0} role="region" aria-label={'Tabel ' + label.toLowerCase()}>
           <table>
-            <thead><tr><th scope="col">Barang</th><th scope="col">Tanggal</th><th scope="col">Jumlah</th>
+            <thead><tr><th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Barang</th><th scope="col">Tanggal</th><th scope="col">Jumlah</th>
               <th scope="col">Keterangan</th><th scope="col">Dicatat oleh</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
             <tbody>{state.data.rows.map((row) => <tr key={row.id}>
+              <td className="thumb-cell"><ItemThumb url={row.photo} name={row.name} /></td>
               <th scope="row"><strong>{row.name}</strong><span>{row.code}</span></th>
               <td>{dateFormat.format(new Date(row.date))}</td>
               <td>{number.format(row.quantity)} {row.unit}</td>

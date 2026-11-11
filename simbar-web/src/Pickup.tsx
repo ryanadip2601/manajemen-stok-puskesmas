@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { rpc } from './supabase';
+import { ItemThumb } from './media';
 import { ItemPicker } from './ItemPicker';
 
 type Status = 'pending' | 'approved' | 'completed' | 'rejected' | 'cancelled';
 type ItemOption = { id: number; code: string; name: string; stock: number; unit: string; category: string };
 type Request = {
   id: number; status: Status; quantity: number; notes: string | null; request_date: string; pickup_date: string | null;
-  reject_reason: string | null; item: string; code: string; stock: number; unit: string;
+  reject_reason: string | null; item: string; code: string; stock: number; unit: string; photo?: string | null;
   requested_by: string; processed_by: string | null;
 };
 type RequestPage = { counts: Record<Status, number>; total: number; rows: Request[] };
@@ -39,9 +40,10 @@ function Message({ value }: { value: { text: string; ok: boolean } }) {
 function RequestTable({ page, mine, children }: { page: RequestPage; mine: boolean; children: (row: Request) => React.ReactNode }) {
   return <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Tabel pengambilan barang">
     <table>
-      <thead><tr><th scope="col">Barang</th><th scope="col">Jumlah</th>{!mine && <th scope="col">Pemohon</th>}
+      <thead><tr><th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Barang</th><th scope="col">Jumlah</th>{!mine && <th scope="col">Pemohon</th>}
         <th scope="col">Diajukan</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
       <tbody>{page.rows.map((row) => <tr key={row.id}>
+        <td className="thumb-cell"><ItemThumb url={row.photo} name={row.item} /></td>
         <th scope="row"><strong>{row.item}</strong><span>{row.code}{row.notes ? ' · ' + row.notes : ''}</span></th>
         <td>{number.format(row.quantity)} {row.unit}{!mine && row.status === 'pending' &&
           <span className={row.quantity > row.stock ? 'cell-note warn' : 'cell-note'}>stok {number.format(row.stock)}</span>}</td>

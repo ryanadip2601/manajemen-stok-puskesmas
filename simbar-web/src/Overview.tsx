@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ItemThumb } from './media';
 import { BentoTitle, CountUp, GlowCard, MiniBars } from './bento';
 import { ClockCard } from './clock';
 import { GroupedBars, RankedBars } from './charts';
@@ -7,11 +8,11 @@ import { rpc } from './supabase';
 type Board = {
   range_days: number;
   stats: { total_items: number; total_stock: number; low_stock: number; categories: number; assets: number };
-  low_stock_items: { id: number; code: string; name: string; stock: number; minimum: number; unit: string }[];
+  low_stock_items: { id: number; code: string; name: string; stock: number; minimum: number; unit: string; photo?: string | null }[];
   monthly: { month: string; stock_in: number; stock_out: number }[];
   categories: { name: string; items: number; stock: number }[];
   top_items?: { name: string; stock: number; unit: string }[];
-  recent?: { kind: 'in' | 'out'; id: number; date: string; quantity: number; name: string; unit: string; petugas: string | null }[];
+  recent?: { kind: 'in' | 'out'; id: number; date: string; quantity: number; name: string; unit: string; petugas: string | null; photo?: string | null }[];
   queues?: Record<'pending_pickup' | 'pending_bhp' | 'pending_usulan' | 'pending_pemeliharaan' | 'pending_users', number>;
   funnel?: { total: number; pending: number; approved: number; completed: number; rejected: number; cancelled: number;
     avg_approval_hours: number; processed_within_24h: number; processed: number };
@@ -75,7 +76,7 @@ export function Overview({ go, isAdmin = false, publicView = false }: { go?: (se
         <BentoTitle icon="fa-triangle-exclamation">Stok menipis</BentoTitle>
         <CountUp value={data.stats.low_stock} className="bento-number" />
         {data.low_stock_items.length > 0 && <ul className="bento-mini-list">{data.low_stock_items.slice(0, 3).map((item) => <li key={item.id}>
-          <span>{item.name}</span>
+          <span className="mini-with-thumb"><ItemThumb url={item.photo} name={item.name} size={22} zoom={false} />{item.name}</span>
           <span className={item.stock === 0 ? 'badge rejected' : 'badge pending'}>{number.format(item.stock)} {item.unit}</span>
         </li>)}</ul>}
       </GlowCard>
@@ -101,6 +102,7 @@ export function Overview({ go, isAdmin = false, publicView = false }: { go?: (se
       <section className="panel">
         <h2>Stok menipis</h2>
         {data.low_stock_items.length ? <ul className="photo-list">{data.low_stock_items.map((item) => <li key={item.id}>
+          <ItemThumb url={item.photo} name={item.name} size={40} />
           <div><strong>{item.name}</strong><span>{item.code} · minimum {number.format(item.minimum)}</span></div>
           <span className={item.stock === 0 ? 'badge rejected' : 'badge pending'}>{number.format(item.stock)} {item.unit}</span>
         </li>)}</ul> : <p>Semua stok di atas minimum.</p>}
@@ -150,6 +152,7 @@ export function Overview({ go, isAdmin = false, publicView = false }: { go?: (se
         <section className="panel">
           <h2>Transaksi terbaru</h2>
           <ul className="photo-list">{(data.recent ?? []).map((entry) => <li key={entry.kind + entry.id}>
+            <ItemThumb url={entry.photo} name={entry.name} size={40} />
             <div><strong>{entry.name}</strong><span>{dateFormat.format(new Date(entry.date))} · {entry.petugas ?? '—'}</span></div>
             <span className={entry.kind === 'in' ? 'badge completed' : 'badge diproses'}>{entry.kind === 'in' ? '+' : '−'}{number.format(entry.quantity)} {entry.unit}</span>
           </li>)}</ul>

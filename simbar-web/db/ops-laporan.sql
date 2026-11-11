@@ -181,7 +181,7 @@ BEGIN
             'low_stock', (SELECT count(*) FROM simbar.items WHERE stock <= minimum_stock),
             'categories', (SELECT count(DISTINCT category_id) FROM simbar.items), 'assets', (SELECT count(*) FROM simbar.barang_aset)),
         'low_stock_items', (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.stock, t.name), '[]') FROM (
-            SELECT i.id, i.code, i.name, i.stock, i.minimum_stock AS minimum, u.symbol AS unit FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id
+            SELECT i.id, i.code, i.name, i.photo, i.stock, i.minimum_stock AS minimum, u.symbol AS unit FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id
             WHERE i.stock <= i.minimum_stock ORDER BY i.stock, i.name LIMIT 10) t),
         'monthly', (SELECT jsonb_agg(jsonb_build_object('month', to_char(m, 'YYYY-MM'),
                 'stock_in', coalesce((SELECT sum(quantity) FROM simbar.stock_in WHERE date >= m AND date < m + interval '1 month'), 0),
@@ -191,13 +191,13 @@ BEGIN
             SELECT c.name, count(i.id) AS items, coalesce(sum(i.stock), 0) AS stock FROM simbar.categories c
             LEFT JOIN simbar.items i ON i.category_id = c.id GROUP BY c.id, c.name) t),
         'top_items', (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.stock DESC, t.name), '[]') FROM (
-            SELECT i.name, i.stock, u.symbol AS unit FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id ORDER BY i.stock DESC, i.name LIMIT 5) t),
+            SELECT i.name, i.photo, i.stock, u.symbol AS unit FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id ORDER BY i.stock DESC, i.name LIMIT 5) t),
         'recent', (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.created_at DESC NULLS LAST, t.id DESC), '[]') FROM (
             SELECT * FROM (
-                SELECT 'in' AS kind, s.id, s.date, s.quantity, s.created_at, i.name, u.symbol AS unit, p.name AS petugas FROM simbar.stock_in s
+                SELECT 'in' AS kind, s.id, s.date, s.quantity, s.created_at, i.name, i.photo, u.symbol AS unit, p.name AS petugas FROM simbar.stock_in s
                 JOIN simbar.items i ON i.id = s.item_id JOIN simbar.units u ON u.id = i.unit_id LEFT JOIN simbar.users p ON p.id = s.user_id
                 UNION ALL
-                SELECT 'out', s.id, s.date, s.quantity, s.created_at, i.name, u.symbol, p.name FROM simbar.stock_out s
+                SELECT 'out', s.id, s.date, s.quantity, s.created_at, i.name, i.photo, u.symbol, p.name FROM simbar.stock_out s
                 JOIN simbar.items i ON i.id = s.item_id JOIN simbar.units u ON u.id = i.unit_id LEFT JOIN simbar.users p ON p.id = s.user_id
             ) movement ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 8) t)
     );
@@ -218,9 +218,9 @@ BEGIN
                     'processed', count(*) FILTER (WHERE processed_at IS NOT NULL AND created_at IS NOT NULL))
                 FROM simbar.stock_out_requests WHERE request_date BETWEEN start_date AND today),
             'pareto', (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.total_out DESC, t.name), '[]') FROM (
-                SELECT i.name, u.symbol AS unit, sum(s.quantity) AS total_out FROM simbar.stock_out s
+                SELECT i.name, i.photo, u.symbol AS unit, sum(s.quantity) AS total_out FROM simbar.stock_out s
                 JOIN simbar.items i ON i.id = s.item_id JOIN simbar.units u ON u.id = i.unit_id
-                WHERE s.date BETWEEN start_date AND today GROUP BY i.id, i.name, u.symbol ORDER BY total_out DESC, i.name LIMIT 10) t),
+                WHERE s.date BETWEEN start_date AND today GROUP BY i.id, i.name, i.photo, u.symbol ORDER BY total_out DESC, i.name LIMIT 10) t),
             'aging', (SELECT jsonb_build_object('0-30 hari', count(*) FILTER (WHERE age BETWEEN 0 AND 30),
                     '31-60 hari', count(*) FILTER (WHERE age BETWEEN 31 AND 60), '61-90 hari', count(*) FILTER (WHERE age BETWEEN 61 AND 90),
                     '>90 hari', count(*) FILTER (WHERE age > 90), 'Belum bergerak', count(*) FILTER (WHERE age IS NULL))

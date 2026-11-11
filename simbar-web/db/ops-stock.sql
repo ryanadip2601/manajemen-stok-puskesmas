@@ -185,7 +185,7 @@ BEGIN
         UNION ALL
         SELECT id, item_id, user_id, quantity, date, notes, created_at FROM simbar.stock_out WHERE movement_kind = 'out'
     ), matched AS MATERIALIZED (
-        SELECT m.id, m.date, m.quantity, m.notes, i.id AS item_id, i.code, i.name, u.symbol AS unit,
+        SELECT m.id, m.date, m.quantity, m.notes, i.id AS item_id, i.code, i.name, i.photo, u.symbol AS unit,
                p.name AS recorded_by, m.created_at
         FROM movements m
         JOIN simbar.items i ON i.id = m.item_id
