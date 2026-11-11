@@ -282,6 +282,19 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   const previewing = profile?.role === 'admin' && viewAs !== 'admin';
   const warehouse = role === 'admin' || role === 'admin_gudang';
   const groups = role ? menuFor(role) : [];
+  // Sidebar groups fold open and closed (remembered per browser); the search box narrows the list.
+  const [menuQuery, setMenuQuery] = useState('');
+  const [folded, setFolded] = useState<string[]>(() => {
+    try { const saved = JSON.parse(remembered('simbar-menu-folded') ?? '[]'); return Array.isArray(saved) ? saved : []; } catch { return []; }
+  });
+  useEffect(() => { remember('simbar-menu-folded', JSON.stringify(folded)); }, [folded]);
+  const needle = menuQuery.trim().toLowerCase();
+  const shownGroups = needle
+    ? groups.map((group) => ({ ...group, items: group.items.filter((item) => (item.label + ' ' + group.title).toLowerCase().includes(needle)) }))
+      .filter((group) => group.items.length)
+    : groups;
+  const isOpen = (group: MenuGroup) => !!needle || !folded.includes(group.title) || group.items.some((item) => item.id === section);
+  const toggleGroup = (title: string) => setFolded(folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title]);
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
     : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === section)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
@@ -321,10 +334,24 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
             </button>)}
         </div>
       </div>}
+      <div className="side-search">
+        <i className="fas fa-magnifying-glass" aria-hidden="true" />
+        <input type="search" value={menuQuery} placeholder="Cari menu…" aria-label="Cari menu"
+          onChange={(event) => setMenuQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setMenuQuery('');
+            if (event.key === 'Enter' && shownGroups[0]) { go(shownGroups[0].items[0].id); setMenuQuery(''); }
+          }} />
+      </div>
       <nav className="side-nav" aria-label="Menu SIMBAR">
-        {groups.map((group) => <div className="side-group" key={group.title}>
-          <p className="side-group-title">{group.title}</p>
-          {group.items.map((item) =>
+        {needle && !shownGroups.length && <p className="side-empty">Menu tidak ditemukan.</p>}
+        {shownGroups.map((group) => <div className={'side-group' + (isOpen(group) ? '' : ' folded')} key={group.title}>
+          <p className="side-group-title"><span className="side-group-name">{group.title}</span>
+            {!needle && <button className="side-fold" aria-expanded={isOpen(group)}
+              aria-label={(isOpen(group) ? 'Tutup ' : 'Buka ') + group.title} onClick={() => toggleGroup(group.title)}>
+              {!isOpen(group) && <span className="side-count">{group.items.length}</span>}
+              <i className="fas fa-chevron-down" aria-hidden="true" /></button>}</p>
+          {isOpen(group) && group.items.map((item) =>
             <button key={item.id} className={'side-link c-' + item.color} aria-current={section === item.id ? 'page' : undefined}
               title={mini ? item.label : undefined} onClick={() => go(item.id)}>
               <span className="side-icon" aria-hidden="true"><i className={'fas ' + item.icon} /></span>
