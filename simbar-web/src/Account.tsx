@@ -80,9 +80,10 @@ export function AuthScreen() {
   const switchTo = (next: typeof mode) => { setMode(next); setMessage({ text: '', ok: true }); };
   return <section className="login-layout">
     <div className="login-intro">
-      <p className="eyebrow">Inventaris &amp; pemeliharaan</p>
-      <h1>Sistem Manajemen Barang</h1>
-      <p>Stok, permintaan, aset, dan pemeliharaan Puskesmas Karang Rejo dalam satu tempat.</p>
+      <span className="logo-tile big" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
+      <h1 className="gradient-text">SIMBAR</h1>
+      <p className="login-sub">Sistem Manajemen Barang</p>
+      <p className="login-org">UPTD Puskesmas Karang Rejo</p>
     </div>
     {mode === 'login' ? <form className="login-card" onSubmit={login}>
       <h2>Masuk ke SIMBAR</h2>

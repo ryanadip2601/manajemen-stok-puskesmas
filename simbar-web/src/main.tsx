@@ -40,16 +40,59 @@ async function api(session: Session, signal: AbortSignal, query?: Record<string,
   return response;
 }
 
-function Brand() {
-  return <div className="brand">
-    <span className="mark" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
-        <path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7.5 5l9 4v4" />
-      </svg>
-    </span>
-    <div><strong>SIMBAR</strong><span>Puskesmas Karang Rejo</span></div>
-  </div>;
+// Light/dark theme and sidebar width are per-browser conveniences, like the old Laravel layout.
+function remembered(key: string) {
+  try { return window.localStorage.getItem(key); } catch { return null; }
 }
+function remember(key: string, value: string) {
+  try { window.localStorage.setItem(key, value); } catch { /* private mode */ }
+}
+
+type Theme = 'light' | 'dark';
+function useTheme() {
+  const [theme, setTheme] = useState<Theme>(() => remembered('simbar-theme') === 'dark' ? 'dark' : 'light');
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    remember('simbar-theme', theme);
+  }, [theme]);
+  return [theme, () => setTheme(theme === 'dark' ? 'light' : 'dark')] as const;
+}
+
+type Section = 'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'profil';
+type MenuItem = { id: Section; label: string; icon: string; color: string };
+type MenuGroup = { title: string; items: MenuItem[] };
+
+function menuFor(role: Summary['profile']['role']): MenuGroup[] {
+  const warehouse = role === 'admin' || role === 'admin_gudang';
+  const groups: MenuGroup[] = [{ title: 'Menu Utama', items: [
+    { id: 'summary', label: 'Dashboard', icon: 'fa-house', color: 'blue' },
+    { id: 'items', label: 'Data Barang', icon: 'fa-box', color: 'emerald' },
+  ] }];
+  if (warehouse) groups.push({ title: 'Transaksi Gudang', items: [
+    { id: 'catalog', label: 'Kelola Barang', icon: 'fa-boxes-stacked', color: 'teal' },
+    { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green' },
+    { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red' },
+    { id: 'checklist', label: 'Checklist Pengambilan', icon: 'fa-clipboard-check', color: 'pink' },
+  ] }, { title: 'Verifikasi', items: [
+    { id: 'verifikasi', label: 'Verifikasi Permintaan', icon: 'fa-hand-holding-medical', color: 'orange' },
+    { id: 'usulan-admin', label: 'Verifikasi Usulan', icon: 'fa-file-import', color: 'teal' },
+  ] });
+  groups.push({ title: 'Manajemen Aset', items: [
+    { id: 'aset', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan' },
+    { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple' },
+    ...(warehouse ? [{ id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber' } as MenuItem] : []),
+  ] }, { title: 'Pengajuan Saya', items: [
+    { id: 'pickup', label: 'Pengambilan Barang', icon: 'fa-hand-holding', color: 'orange' },
+    { id: 'permintaan', label: 'Permintaan Barang', icon: 'fa-clipboard-list', color: 'amber' },
+    { id: 'usulan', label: 'Usulan Penerimaan', icon: 'fa-file-signature', color: 'blue' },
+  ] });
+  if (role === 'admin') groups.push({ title: 'Administrasi', items: [
+    { id: 'laporan', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo' },
+    { id: 'users', label: 'Pengguna', icon: 'fa-users-gear', color: 'rose' },
+  ] });
+  return groups;
+}
+const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
 type Status = { linked: boolean; approved: boolean; id?: number; name?: string; role?: string };
 
@@ -59,6 +102,7 @@ function App() {
   const [recovery, setRecovery] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [notice, setNotice] = useState('');
+  const [theme, toggleTheme] = useTheme();
 
   useEffect(() => {
     const subscription = auth?.onAuthStateChange((event, next) => {
@@ -100,27 +144,34 @@ function App() {
     if (!result || result.error) setNotice('Gagal keluar. Coba lagi.');
   }
 
-  return <div className="shell">
-    <header className="site-header"><Brand /><div className="header-actions">
-      {session && <button className="secondary" onClick={signOut}>Keluar</button>}
-    </div></header>
-    <main>
+  if (ready && session && !recovery && status?.approved) {
+    return <Dashboard key={session.user.id} session={session} selfId={status.id ?? null}
+      notice={notice} signOut={signOut} theme={theme} toggleTheme={toggleTheme} />;
+  }
+  return <div className="auth-shell">
+    {session && <button className="logout auth-signout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>}
+    <main className="auth-main">
       {notice && <p className="notice" role="alert">{notice}</p>}
-      {!ready ? <p role="status">Memuat SIMBAR…</p>
+      {!ready ? <p className="auth-status" role="status">Memuat SIMBAR…</p>
         : recovery && session ? <NewPassword done={() => { setRecovery(false); setNotice(''); window.history.replaceState(null, '', '/'); }} />
         : !session ? <AuthScreen />
-        : !status ? <p role="status">Memeriksa akun…</p>
-        : !status.approved ? <PendingAccount linked={status.linked} name={status.name} />
-        : <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} />}
+        : !status ? <p className="auth-status" role="status">Memeriksa akun…</p>
+        : <PendingAccount linked={status.linked} name={status.name} />}
     </main>
-    <footer>UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
+    <footer className="auth-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
   </div>;
 }
 
-function Dashboard({ session, selfId }: { session: Session; selfId: number | null }) {
+function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme }: {
+  session: Session; selfId: number | null; notice: string; signOut: () => void; theme: Theme; toggleTheme: () => void;
+}) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
-  const [section, setSection] = useState<'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'profil'>('summary');
+  const [section, setSection] = useState<Section>('summary');
   const [reload, setReload] = useState(0);
+  const [mini, setMini] = useState(() => remembered('simbar-sidebar') === 'mini');
+  const [drawer, setDrawer] = useState(false);
+
+  useEffect(() => remember('simbar-sidebar', mini ? 'mini' : 'full'), [mini]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -132,31 +183,65 @@ function Dashboard({ session, selfId }: { session: Session; selfId: number | nul
     return () => controller.abort();
   }, [session, reload]);
 
-  if (state.error) return <section className="panel">
-    <h1>Ringkasan SIMBAR</h1><p className="notice" role="alert">{state.error}</p>
-    <button className="secondary" onClick={() => { setState({}); setReload(reload + 1); }}>Coba lagi</button>
-  </section>;
-  if (!state.summary) return <p role="status">Memuat ringkasan SIMBAR…</p>;
+  const profile = state.summary?.profile;
+  const warehouse = profile?.role === 'admin' || profile?.role === 'admin_gudang';
+  const groups = profile ? menuFor(profile.role) : [];
+  const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
+    : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === section)
+      ?? { label: 'Dashboard', group: 'Menu Utama' };
 
-  const { profile } = state.summary;
-  const warehouse = profile.role === 'admin' || profile.role === 'admin_gudang';
-  const menu: [typeof section, string][] = [['summary', 'Ringkasan'], ['items', 'Daftar barang'], ['aset', 'Barang aset'], ['pemeliharaan', 'Pemeliharaan'],
-    ['pickup', 'Pengambilan barang'], ['permintaan', 'Permintaan barang'], ['usulan', 'Usulan penerimaan']];
-  if (warehouse) menu.push(['checklist', 'Checklist'], ['verifikasi', 'Verifikasi permintaan'], ['usulan-admin', 'Verifikasi usulan'], ['penyusutan', 'Penyusutan'], ['catalog', 'Kelola barang'], ['in', 'Barang masuk'], ['out', 'Barang keluar']);
-  if (profile.role === 'admin') menu.push(['laporan', 'Laporan'], ['users', 'Pengguna']);
-  menu.push(['profil', 'Profil']);
+  function go(next: Section) {
+    setSection(next);
+    setDrawer(false);
+    window.scrollTo(0, 0);
+  }
+  function toggleMenu() {
+    if (window.matchMedia('(max-width: 900px)').matches) setDrawer(!drawer);
+    else setMini(!mini);
+  }
 
-  return <>
-    <section className="dashboard-intro">
-      <p className="eyebrow">Inventaris &amp; pemeliharaan</p>
-      <h1>Ringkasan SIMBAR</h1>
-      <p>{profile.name} <span aria-hidden="true">·</span> {roles[profile.role]}</p>
-    </section>
-    <nav className="filters" aria-label="Menu SIMBAR">
-      {menu.map(([value, label]) =>
-        <button key={value} className="secondary" aria-pressed={section === value} onClick={() => setSection(value)}>{label}</button>
-      )}
-    </nav>
+  return <div className={'app' + (mini ? ' mini' : '') + (drawer ? ' drawer-open' : '')}>
+    <aside className="sidebar">
+      <div className="side-brand">
+        <span className="logo-tile" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
+        <div className="side-brand-text"><strong className="gradient-text">SIMBAR</strong><span>Puskesmas Karang Rejo</span></div>
+      </div>
+      <nav className="side-nav" aria-label="Menu SIMBAR">
+        {groups.map((group) => <div className="side-group" key={group.title}>
+          <p className="side-group-title">{group.title}</p>
+          {group.items.map((item) =>
+            <button key={item.id} className={'side-link c-' + item.color} aria-current={section === item.id ? 'page' : undefined}
+              title={mini ? item.label : undefined} onClick={() => go(item.id)}>
+              <span className="side-icon" aria-hidden="true"><i className={'fas ' + item.icon} /></span>
+              <span className="side-label">{item.label}</span>
+            </button>)}
+        </div>)}
+      </nav>
+      {profile && <button className={'side-user' + (section === 'profil' ? ' active' : '')} onClick={() => go('profil')}
+        aria-label="Profil" title={mini ? 'Profil' : undefined}>
+        <span className={'avatar role-' + profile.role} aria-hidden="true"><i className="fas fa-user" /></span>
+        <span className="side-user-text" aria-hidden="true"><strong>{profile.name}</strong>
+          <span><i className={'fas ' + roleIcons[profile.role]} /> {roles[profile.role]}</span></span>
+        <i className="fas fa-gear side-user-cog" aria-hidden="true" />
+      </button>}
+    </aside>
+    <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden="true" />
+    <div className="main-area">
+      <header className="topbar">
+        <button className="icon-button" onClick={toggleMenu} aria-label="Buka atau tutup menu"><i className="fas fa-bars" aria-hidden="true" /></button>
+        <div className="topbar-title"><h1>{current.label}</h1><p>{current.group}</p></div>
+        <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Pakai mode terang' : 'Pakai mode gelap'}
+          title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}>
+          <i className={theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'} aria-hidden="true" />
+        </button>
+        <button className="logout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>
+      </header>
+      <main className="content">
+        {notice && <p className="notice" role="alert">{notice}</p>}
+        {state.error ? <section className="panel">
+          <h2>Ringkasan SIMBAR</h2><p className="notice" role="alert">{state.error}</p>
+          <button className="secondary" onClick={() => { setState({}); setReload(reload + 1); }}>Coba lagi</button>
+        </section> : !state.summary ? <p role="status">Memuat ringkasan SIMBAR…</p> : <>
     <RestockNotices />
     {section === 'aset' ? <Assets warehouse={warehouse} />
       : section === 'laporan' ? <Laporan />
@@ -172,10 +257,13 @@ function Dashboard({ session, selfId }: { session: Session; selfId: number | nul
       : section === 'checklist' ? <Checklist />
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
-      : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} /> : <>
-    <Overview isAdmin={profile.role === 'admin'} go={(target) => setSection(target as typeof section)} />
-    </>}
-  </>;
+      : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} />
+      : <Overview isAdmin={profile?.role === 'admin'} go={(target) => go(target as Section)} />}
+        </>}
+      </main>
+      <footer className="app-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
+    </div>
+  </div>;
 }
 
 createRoot(document.getElementById('root')!).render(<App />);
