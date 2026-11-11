@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { GroupedBars } from './charts';
 import { downloadCsv, stamp } from './csv';
 import { rpc } from './supabase';
+import { ItemPicker, type PickItem } from './ItemPicker';
 import { BADGE, KINDS, STATUS, type QueueKind } from './Verifikasi';
 import { downloadXlsx } from './xlsx';
 
@@ -268,12 +269,13 @@ function Gabungan({ kind, settings }: { kind: 'mutasi' | 'pengajuan'; settings: 
   const [filters, setFilters] = useState<Record<string, string>>({ dari: `${thisYear}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`, sampai: today });
   const [page, setPage] = useState(1);
   const [state, setState] = useState<{ data?: ListPage; error?: string }>({});
-  const [items, setItems] = useState<{ id: number; name: string }[]>([]);
+  const [items, setItems] = useState<PickItem[]>([]);
   const [printRows, setPrintRows] = usePrint();
   const [busy, setBusy] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
-    if (kind === 'mutasi') rpc<{ items: { id: number; name: string }[] }>('simbar_stock_options').then((v) => setItems(v.items)).catch(() => {});
+    if (kind === 'mutasi') rpc<{ items: PickItem[] }>('simbar_stock_options').then((v) => setItems(v.items)).catch(() => {});
   }, [kind]);
   useEffect(() => {
     let live = true;
@@ -321,20 +323,19 @@ function Gabungan({ kind, settings }: { kind: 'mutasi' | 'pengajuan'; settings: 
   }
 
   return <>
-    <form className="asset-filter" onSubmit={apply} key={kind}>
+    <form className="asset-filter" onSubmit={apply} key={kind + formKey}>
       <label>Dari tanggal<input name="dari" type="date" defaultValue={filters.dari} /></label>
       <label>Sampai tanggal<input name="sampai" type="date" defaultValue={filters.sampai} /></label>
       <label>Jenis<select name="jenis" defaultValue=""><option value="">Semua</option>
         {kind === 'mutasi' ? <><option value="in">Barang masuk</option><option value="out">Barang keluar</option></>
           : (Object.keys(KINDS) as QueueKind[]).map((value) => <option key={value} value={value}>{KINDS[value].label}</option>)}</select></label>
-      {kind === 'mutasi' ? <label>Barang<select name="item" defaultValue=""><option value="">Semua barang</option>
-        {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      {kind === 'mutasi' ? <label>Barang<ItemPicker name="item" allLabel="Semua barang" items={items} /></label>
         : <label>Status<select name="status" defaultValue=""><option value="">Semua</option>
           {Object.entries(bucketLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
       <label>Cari<input name="search" type="search" maxLength={100} placeholder={kind === 'mutasi' ? 'Nama, kode atau keterangan' : 'Barang, kode atau pengaju'} /></label>
       <div className="form-actions wide">
         <button className="primary" type="submit">Terapkan</button>
-        <button className="secondary" type="reset" onClick={() => { setFilters({}); setPage(1); }}>Semua periode</button>
+        <button className="secondary" type="button" onClick={() => { setFilters({}); setPage(1); setFormKey((k) => k + 1); }}>Semua periode</button>
       </div>
     </form>
     <Actions busy={busy || !state.data} onExport={async (type) => { const rows = await everything(); if (rows) exportFile(type, 'laporan-' + kind, title, subtitle, columns, rows); }}
@@ -355,13 +356,13 @@ function Gabungan({ kind, settings }: { kind: 'mutasi' | 'pengajuan'; settings: 
 type Kartu = { item: Row; saldo_awal: number; masuk: number; keluar: number; saldo_akhir: number; rows: Row[] };
 
 function KartuStok({ settings }: { settings: PrintSettings }) {
-  const [items, setItems] = useState<{ id: number; name: string }[]>([]);
+  const [items, setItems] = useState<PickItem[]>([]);
   const [item, setItem] = useState('');
   const [period, setPeriod] = useState({ dari: `${thisYear}-01-01`, sampai: today });
   const [state, setState] = useState<{ data?: Kartu; error?: string }>({});
   const [printRows, setPrintRows] = usePrint();
 
-  useEffect(() => { rpc<{ items: { id: number; name: string }[] }>('simbar_stock_options').then((v) => setItems(v.items)).catch(() => {}); }, []);
+  useEffect(() => { rpc<{ items: PickItem[] }>('simbar_stock_options').then((v) => setItems(v.items)).catch(() => {}); }, []);
   useEffect(() => {
     if (!item) { setState({}); return; }
     let live = true;
@@ -392,9 +393,7 @@ function KartuStok({ settings }: { settings: PrintSettings }) {
 
   return <>
     <div className="asset-filter">
-      <label className="wide">Barang<select value={item} onChange={(event) => setItem(event.target.value)}>
-        <option value="">Pilih barang…</option>
-        {items.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+      <label className="wide">Barang<ItemPicker value={item} onChange={setItem} items={items} /></label>
       <label>Dari<input type="date" value={period.dari} max={period.sampai} onChange={(event) => setPeriod({ ...period, dari: event.target.value })} /></label>
       <label>Sampai<input type="date" value={period.sampai} min={period.dari} onChange={(event) => setPeriod({ ...period, sampai: event.target.value })} /></label>
     </div>

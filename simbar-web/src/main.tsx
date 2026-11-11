@@ -8,6 +8,7 @@ import { Overview } from './Overview';
 import { RestockNotices } from './Permintaan';
 import { Verifikasi } from './Verifikasi';
 import { Pengajuan } from './Pengajuan';
+import { RapikanBarang } from './Rapikan';
 import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
@@ -226,7 +227,9 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
 }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
   // A tapped notification opens the app at /?menu=<section>.
-  const [section, setSection] = useState<Section>(() => linkedSection(window.location.search) ?? 'summary');
+  // A scanned asset label opens /?aset=<id>: go straight to that asset.
+  const [openAset] = useState(() => Number(new URLSearchParams(window.location.search).get('aset')) || undefined);
+  const [section, setSection] = useState<Section>(() => openAset ? 'aset-menu' : linkedSection(window.location.search) ?? 'summary');
   const [reload, setReload] = useState(0);
   const [mini, setMini] = useState(() => remembered('simbar-sidebar') === 'mini');
   const [drawer, setDrawer] = useState(false);
@@ -397,7 +400,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
       ? <AsetMenu key={section} warehouse={warehouse} initial={section === 'aset-menu' || section === 'aset' ? undefined : section}
           allowed={([['list', 'aset'], ['pemeliharaan', 'pemeliharaan'], ['penyusutan', 'penyusutan']] as const)
             .filter(([, right]) => role === 'admin' || (!!role && roleMenus[role].includes(right))).map(([tab]) => tab as AsetTab)
-            .concat(warehouse ? ['rooms', 'categories'] : [])} />
+            .concat(warehouse ? ['label', 'rooms', 'categories'] : [])} openAset={openAset} />
       : section === 'laporan' ? <Laporan />
       : section === 'users' ? <Users selfId={selfId} />
       : section === 'menus' ? <RoleMenusPage saved={roleMenus} onSaved={setRoleMenus} />
@@ -412,7 +415,9 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
         ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section}
             allowed={(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
       : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))
-        ? <Catalog list={(edit, version, add) => <Inventory kind="items" session={session} request={api} onEdit={edit} version={version} actions={add} />} />
+        ? <Catalog list={(edit, version, add, refresh) => <>
+            <RapikanBarang admin={role === 'admin'} edit={edit} refresh={refresh} version={version} />
+            <Inventory kind="items" session={session} request={api} onEdit={edit} version={version} actions={add} /></>} />
         : <Inventory key={section} kind={section} session={session} request={api} />)
       : <><DeviceApp compact /><Overview isAdmin={role === 'admin'} go={(target) => go(target as Section)} /></>}
     </div>

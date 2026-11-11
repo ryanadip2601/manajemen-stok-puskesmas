@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { rpc } from './supabase';
+import { ItemPicker } from './ItemPicker';
 
 type Option = { id: number; name: string };
 type Category = Option & { description: string | null; items: number };
 type Unit = Option & { symbol: string };
-type ItemOption = Option & { code: string; stock: number; unit: string };
+type ItemOption = Option & { code: string; stock: number; unit: string; category?: string };
 type Options = { categories: Category[]; units: Unit[]; items: ItemOption[] };
 type ItemDetail = {
   id: number; code: string; name: string; categoryId: number; unitId: number; description: string | null;
@@ -40,7 +41,7 @@ function Status({ message, tone }: { message: string; tone: 'ok' | 'error' }) {
 }
 
 // Data Barang for people who may change barang: the shared list (passed in) plus the add/edit form and jenis barang.
-export function Catalog({ list }: { list: (edit: (id: number) => void, version: number, add: ReactNode) => ReactNode }) {
+export function Catalog({ list }: { list: (edit: (id: number) => void, version: number, add: ReactNode, refresh: () => void) => ReactNode }) {
   const [options, loadError, reload] = useOptions();
   const [editing, setEditing] = useState<ItemDetail | 'new' | null>(null);
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' }>({ text: '', tone: 'ok' });
@@ -133,7 +134,7 @@ export function Catalog({ list }: { list: (edit: (id: number) => void, version: 
         </div>
       </form>}
     </section>}
-    {list(edit, version, add)}
+    {list(edit, version, add, () => { reload(); setVersion((v) => v + 1); })}
     <section className="panel">
       <h2>Jenis barang</h2>
       <form className="filters" onSubmit={saveCategory}>
@@ -220,11 +221,7 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
     {editing && <form className="record-form" onSubmit={save} key={current?.id ?? 'new'}>
       <h3>{current ? 'Ubah transaksi ' + current.name : label + ' baru'}</h3>
       {current ? <p className="wide">{current.name} · {current.code}</p>
-        : <label className="wide">Barang<select name="item" required defaultValue="">
-          <option value="" disabled>Pilih barang</option>
-          {options.items.map((item) => <option key={item.id} value={item.id}>
-            {item.name} ({item.code}) — stok {number.format(item.stock)} {item.unit}</option>)}
-        </select></label>}
+        : <label className="wide">Barang<ItemPicker name="item" required items={options.items} /></label>}
       <label>Jumlah<input name="quantity" type="number" min="1" step="1" required defaultValue={current?.quantity ?? ''} /></label>
       <label>Tanggal<input name="date" type="date" required defaultValue={current?.date ?? today()} /></label>
       <label className="wide">Keterangan<textarea name="notes" rows={2} defaultValue={current?.notes ?? ''} /></label>
@@ -239,10 +236,7 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
       </div>
     </form>}
     <form className="movement-filter" onSubmit={applyFilter} key={filtered ? 'filtered' : 'all'}>
-      <label>Barang<select name="item" defaultValue={filter.item}>
-        <option value="">Semua barang</option>
-        {options.items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select></label>
+      <label>Barang<ItemPicker name="item" defaultValue={filter.item} allLabel="Semua barang" items={options.items} /></label>
       <label>Dari<input name="from" type="date" defaultValue={filter.from} /></label>
       <label>Sampai<input name="to" type="date" defaultValue={filter.to} /></label>
       <div className="form-actions">

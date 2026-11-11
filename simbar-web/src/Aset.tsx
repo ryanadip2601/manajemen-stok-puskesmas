@@ -51,7 +51,9 @@ function useOptions(version: number) {
 }
 
 // `section` shows one part without the inner tab bar (the Aset menu has its own tabs); `onReport` adds "Laporkan rusak".
-export function Assets({ warehouse, section, onReport }: { warehouse: boolean; section?: 'list' | 'rooms' | 'categories'; onReport?: (asetId: number) => void }) {
+export function Assets({ warehouse, section, onReport, openId }: {
+  warehouse: boolean; section?: 'list' | 'rooms' | 'categories'; onReport?: (asetId: number) => void; openId?: number;
+}) {
   const [chosen, setTab] = useState<'list' | 'rooms' | 'categories'>('list');
   const tab = section ?? chosen;
   const [version, setVersion] = useState(0);
@@ -65,11 +67,13 @@ export function Assets({ warehouse, section, onReport }: { warehouse: boolean; s
     {!options ? <p role="status">Memuat data aset…</p>
       : tab === 'rooms' ? <Rooms options={options} refresh={refresh} />
       : tab === 'categories' ? <Categories options={options} refresh={refresh} />
-      : <AssetList options={options} warehouse={warehouse} refresh={refresh} onReport={onReport} />}
+      : <AssetList options={options} warehouse={warehouse} refresh={refresh} onReport={onReport} openId={openId} />}
   </>;
 }
 
-function AssetList({ options, warehouse, refresh, onReport }: { options: Options; warehouse: boolean; refresh: () => void; onReport?: (asetId: number) => void }) {
+function AssetList({ options, warehouse, refresh, onReport, openId }: {
+  options: Options; warehouse: boolean; refresh: () => void; onReport?: (asetId: number) => void; openId?: number;
+}) {
   const empty = { search: '', kategori: '', ruangan: '', kondisi: '', status: '', tahun: '', butuh_perbaikan: false };
   const [filters, setFilters] = useState(empty);
   const [page, setPage] = useState(1);
@@ -87,6 +91,8 @@ function AssetList({ options, warehouse, refresh, onReport }: { options: Options
       .then((data) => active && setState({ data })).catch((error: Error) => active && setState({ error: error.message }));
     return () => { active = false; };
   }, [filters, page, version]);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     setMessage({ text: '', ok: true });

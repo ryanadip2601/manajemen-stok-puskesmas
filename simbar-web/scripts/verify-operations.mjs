@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -524,6 +524,55 @@ try {
   await assert.rejects(db.query(`SELECT public.simbar_laporan_persediaan('2026-01-01', '2026-01-31', NULL, '')`), /Akses ditolak/);
   await assert.rejects(db.query(`SELECT public.simbar_kartu_stok($1, '2026-01-01', '2026-01-31')`, [busiest.id]), /Akses ditolak/);
   await as(ADMIN);
+
+  // Rapikan: merge duplicate barang, remember variants, fix suspicious jumlah, number assets, list labels.
+  await as(ADMIN);
+  const unitRow = await one('SELECT unit_id, category_id FROM simbar.items ORDER BY id LIMIT 1');
+  const otherUnit = (await one('SELECT id FROM simbar.units WHERE id <> $1 ORDER BY id LIMIT 1', [unitRow.unit_id])).id;
+  const keepId = (await one(`SELECT public.simbar_item_save(NULL, 'RAP-001', 'Map Rapikan', $1, $2, 'APBD Balikpapan', 1000, 1, NULL, NULL, 5) AS id`,
+    [unitRow.category_id, unitRow.unit_id])).id;
+  const dropId = (await one(`SELECT public.simbar_item_save(NULL, 'RAP-002', 'Map rapikan ', $1, $2, 'APBD Balikpapan', 1000, 1, NULL, NULL, 3) AS id`,
+    [unitRow.category_id, unitRow.unit_id])).id;
+  const oddId = (await one(`SELECT public.simbar_item_save(NULL, 'RAP-003', 'Map Rapikan Box', $1, $2, 'APBD Balikpapan', 1000, 1, NULL, NULL, 2) AS id`,
+    [unitRow.category_id, otherUnit])).id;
+  await db.query(`SELECT public.simbar_stock_save('in', NULL, $1, 4, '2026-11-11', 'rapikan')`, [dropId]);
+  await db.query(`SELECT public.simbar_item_pair_ignore($1, $2)`, [oddId, keepId]);
+  await db.query(`SELECT public.simbar_item_pair_ignore($1, $2)`, [keepId, oddId]);
+  assert.ok((await one('SELECT public.simbar_item_pairs_ignored() AS p')).p.some(([a, b]) => Number(a) === Number(keepId) && Number(b) === Number(oddId)));
+  await assert.rejects(db.query('SELECT public.simbar_item_merge($1, $2)', [keepId, oddId]), /Satuan kedua barang berbeda/);
+  await db.query('SELECT public.simbar_item_merge($1, $2)', [keepId, dropId]);
+  assert.equal(await stockOf(keepId), 5 + 3 + 4, 'merged stock adds up');
+  assert.equal(Number((await one('SELECT count(*) AS n FROM simbar.items WHERE id = $1', [dropId])).n), 0, 'the merged barang is gone');
+  assert.equal(Number((await one(`SELECT count(*) AS n FROM simbar.stock_in WHERE item_id = $1 AND notes = 'rapikan'`, [keepId])).n), 1, 'its history moved');
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_item_merge($1, $2)', [keepId, oddId]), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_aset_register_assign()'), /Akses ditolak/);
+  await as(ADMIN);
+
+  const asetRow = await one('SELECT id FROM simbar.barang_aset ORDER BY id LIMIT 1');
+  await db.query('UPDATE simbar.barang_aset SET jumlah = 2019, nomor_register = NULL WHERE id = $1', [asetRow.id]);
+  assert.ok((await one('SELECT public.simbar_aset_suspicious() AS s')).s.some((row) => Number(row.id) === Number(asetRow.id)), 'jumlah 2019 is flagged');
+  const registerBefore = (await one('SELECT public.simbar_aset_register_status() AS s')).s;
+  assert.ok(Number(registerBefore.ditahan) >= 1);
+  const assigned = (await one('SELECT public.simbar_aset_register_assign() AS r')).r;
+  assert.equal(Number(assigned.aset), Number(registerBefore.tanpa_register), 'every asset without register and with a sane jumlah gets one');
+  assert.equal(Number((await one('SELECT public.simbar_aset_register_assign() AS r')).r.aset), 0, 'running again assigns nothing');
+  assert.equal((await one('SELECT nomor_register FROM simbar.barang_aset WHERE id = $1', [asetRow.id])).nomor_register, null, 'suspicious jumlah is skipped');
+  const overlap = await one(`WITH r AS (
+      SELECT id, kategori_aset_id AS k, (regexp_match(nomor_register, '^([0-9]+)'))[1]::int AS a, (regexp_match(nomor_register, '([0-9]+)$'))[1]::int AS b
+      FROM simbar.barang_aset WHERE nomor_register ~ '^[0-9]{4}(-[0-9]{4})?$')
+    SELECT count(*) AS n FROM r x JOIN r y ON x.k IS NOT DISTINCT FROM y.k AND x.id <> y.id AND x.a <= y.b AND y.a <= x.b`);
+  assert.equal(Number(overlap.n), 0, 'register numbers never overlap inside a kategori');
+  const multi = await one(`SELECT jumlah, nomor_register FROM simbar.barang_aset WHERE jumlah BETWEEN 2 AND 100 AND nomor_register ~ '^[0-9]{4}-[0-9]{4}$' LIMIT 1`);
+  if (multi) {
+    const [a, b] = multi.nomor_register.split('-').map(Number);
+    assert.equal(b - a + 1, Number(multi.jumlah), 'a range covers every unit');
+  }
+  await db.query('SELECT public.simbar_aset_fix_jumlah($1, 1, 2019)', [asetRow.id]);
+  assert.equal(Number((await one('SELECT jumlah FROM simbar.barang_aset WHERE id = $1', [asetRow.id])).jumlah), 1);
+  assert.equal(Number((await one('SELECT public.simbar_aset_register_assign() AS r')).r.aset), 1, 'after the fix it gets a number');
+  const labels = (await one(`SELECT public.simbar_aset_labels('{}') AS l`)).l;
+  assert.ok(labels.length > 0 && labels.every((row) => Number(row.jumlah) <= 100));
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

@@ -16,9 +16,9 @@ BEGIN
             ORDER BY lower(name)), '[]') FROM simbar.categories c),
         'units', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'symbol', symbol)
             ORDER BY lower(name)), '[]') FROM simbar.units),
-        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name,
+        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'category', cat.name,
                 'stock', i.stock, 'unit', u.symbol) ORDER BY lower(i.name), i.id), '[]')
-            FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id)
+            FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id LEFT JOIN simbar.categories cat ON cat.id = i.category_id)
     );
 END;
 $function$;

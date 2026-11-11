@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PhotoField, StoredPhoto } from './media';
 import { rpc } from './supabase';
+import { ItemPicker } from './ItemPicker';
 
 type Status = 'pending' | 'diproses' | 'disetujui' | 'ditolak' | 'revisi' | 'tersedia' | 'dibaca';
 type Tipe = 'barang_baru' | 'restok';
@@ -196,11 +197,9 @@ function RequestForm({ options, editing, busy, onSubmit, onCancel }: {
       <label><input type="radio" name="tipe" checked={tipe === 'restok'} onChange={() => setTipe('restok')} /> Restok barang yang habis/menipis</label>
       <label><input type="radio" name="tipe" checked={tipe === 'barang_baru'} onChange={() => setTipe('barang_baru')} /> Barang baru (belum ada di daftar)</label>
     </fieldset>
-    {tipe === 'restok' ? <label className="wide">Barang<select name="item" required defaultValue={editing?.itemId ?? ''}>
-      <option value="" disabled>{restockable.length ? 'Pilih barang' : 'Tidak ada barang yang stoknya menipis'}</option>
-      {restockable.map((item) => <option key={item.id} value={item.id}>
-        {item.name} ({item.code}) — stok {number.format(item.stock)} {item.unit}, minimum {number.format(item.minimum)}</option>)}
-    </select></label> : <>
+    {tipe === 'restok' ? <label className="wide">Barang<ItemPicker name="item" required defaultValue={editing?.itemId ? String(editing.itemId) : ''}
+      placeholder={restockable.length ? 'Ketik nama, kode atau jenis barang…' : 'Tidak ada barang yang stoknya menipis'}
+      items={restockable.map((item) => ({ ...item, note: 'minimum ' + number.format(item.minimum) }))} /></label> : <>
       <label>Nama barang<input name="name" required maxLength={255} defaultValue={editing?.tipe === 'barang_baru' ? editing.name : ''} /></label>
       <label>Ruangan (opsional)<select name="room" defaultValue={editing?.roomId ?? ''}>
         <option value="">Tidak ditentukan</option>

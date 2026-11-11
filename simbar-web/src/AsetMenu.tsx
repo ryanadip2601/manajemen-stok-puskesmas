@@ -2,19 +2,22 @@ import { useState } from 'react';
 import { Assets } from './Aset';
 import { Pemeliharaan } from './Pemeliharaan';
 import { Penyusutan } from './Penyusutan';
+import { AsetLabel } from './AsetLabel';
 
 // Aset: one menu for everything about assets. Tabs follow the role's rights (Atur Menu: aset, pemeliharaan, penyusutan);
 // Ruangan and Kategori stay with the warehouse, like the database rules for changing them.
-export type AsetTab = 'list' | 'pemeliharaan' | 'penyusutan' | 'rooms' | 'categories';
+export type AsetTab = 'list' | 'pemeliharaan' | 'penyusutan' | 'label' | 'rooms' | 'categories';
 const TABS: { id: AsetTab; label: string; icon: string }[] = [
   { id: 'list', label: 'Daftar aset', icon: 'fa-boxes-packing' },
   { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench' },
   { id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator' },
+  { id: 'label', label: 'Nomor & label', icon: 'fa-qrcode' },
   { id: 'rooms', label: 'Ruangan', icon: 'fa-door-open' },
   { id: 'categories', label: 'Kategori', icon: 'fa-tags' },
 ];
 
-export function AsetMenu({ allowed, warehouse, initial }: { allowed: AsetTab[]; warehouse: boolean; initial?: AsetTab }) {
+// `openAset` (from a scanned label QR) opens that asset's detail in the list.
+export function AsetMenu({ allowed, warehouse, initial, openAset }: { allowed: AsetTab[]; warehouse: boolean; initial?: AsetTab; openAset?: number }) {
   const tabs = TABS.filter((tab) => allowed.includes(tab.id));
   const [tab, setTab] = useState<AsetTab | undefined>(initial && allowed.includes(initial) ? initial : tabs[0]?.id);
   const [report, setReport] = useState<number | null>(null);
@@ -30,6 +33,8 @@ export function AsetMenu({ allowed, warehouse, initial }: { allowed: AsetTab[]; 
     </div>}
     {tab === 'pemeliharaan' ? <Pemeliharaan key={report ?? 'list'} warehouse={warehouse} start={report !== null} preset={report ?? undefined} />
       : tab === 'penyusutan' ? <Penyusutan />
-      : <Assets key={tab} warehouse={warehouse} section={tab} onReport={tab === 'list' ? reportAsset : undefined} />}
+      : tab === 'label' ? <AsetLabel />
+      : <Assets key={tab} warehouse={warehouse} section={tab} onReport={tab === 'list' ? reportAsset : undefined}
+          openId={tab === 'list' ? openAset : undefined} />}
   </>;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { rpc } from './supabase';
+import { ItemPicker } from './ItemPicker';
 
 type Status = 'pending' | 'approved' | 'completed' | 'rejected' | 'cancelled';
 type ItemOption = { id: number; code: string; name: string; stock: number; unit: string; category: string };
@@ -124,11 +125,8 @@ export function MyPickups({ start, onBack }: { start?: boolean; onBack?: () => v
         const selected = items.find((item) => String(item.id) === line.item);
         return <fieldset className="pickup-line wide" key={line.key}>
           <legend>Barang {index + 1}</legend>
-          <label>Barang<select required value={line.item} onChange={(event) => update(line.key, { item: event.target.value })}>
-            <option value="" disabled>Pilih barang</option>
-            {items.map((item) => <option key={item.id} value={item.id} disabled={chosen.has(String(item.id)) && line.item !== String(item.id)}>
-              {item.name} — stok {number.format(item.stock)} {item.unit}</option>)}
-          </select></label>
+          <label>Barang<ItemPicker items={items} required value={line.item} disabledIds={chosen}
+            onChange={(id) => update(line.key, { item: id })} /></label>
           <label>Jumlah{selected && ` (maks. ${number.format(selected.stock)})`}
             <input type="number" min="1" max={selected?.stock} step="1" required value={line.quantity}
               onChange={(event) => update(line.key, { quantity: event.target.value })} /></label>
