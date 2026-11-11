@@ -7,10 +7,9 @@ import { Pemeliharaan } from './Pemeliharaan';
 import { Laporan } from './Laporan';
 import { Overview } from './Overview';
 import { Penyusutan } from './Penyusutan';
-import { AdminPermintaan, RestockNotices } from './Permintaan';
+import { RestockNotices } from './Permintaan';
+import { Verifikasi } from './Verifikasi';
 import { Pengajuan } from './Pengajuan';
-import { Checklist } from './Pickup';
-import { AdminUsulan } from './Usulan';
 import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
@@ -62,7 +61,7 @@ function useTheme() {
   return [theme, () => setTheme(theme === 'dark' ? 'light' : 'dark')] as const;
 }
 
-type Section = 'summary' | InventoryKind | 'catalog' | 'pengajuan' | 'mutasi' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
+type Section = 'summary' | InventoryKind | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
 type MenuItem = { id: Section; label: string; icon: string; color: string };
 type MenuGroup = { title: string; items: MenuItem[] };
 
@@ -78,7 +77,7 @@ function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
-const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'pengajuan', 'mutasi', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
+const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'pengajuan', 'mutasi', 'antrean', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
   'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'menus', 'profil'];
 function linkedSection(search: string) {
   const wanted = new URLSearchParams(search).get('menu');
@@ -269,6 +268,15 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
     rpc<RoleMenus>('simbar_role_menus').then((saved) => { if (saved?.staff && saved?.admin_gudang) setRoleMenus(saved); }).catch(() => {});
   }, [session, reload]);
   const groups = role ? menuFor(role, roleMenus) : [];
+  const hasQueue = groups.some((group) => group.items.some((item) => item.id === 'antrean'));
+  const [waiting, setWaiting] = useState(0);
+  const refreshWaiting = () => { rpc<number>('simbar_queue_waiting').then((n) => setWaiting(Number(n) || 0)).catch(() => {}); };
+  useEffect(() => {
+    if (!hasQueue) return;
+    refreshWaiting();
+    const timer = window.setInterval(refreshWaiting, 60_000);
+    return () => window.clearInterval(timer);
+  }, [hasQueue, section]); // eslint-disable-line react-hooks/exhaustive-deps
   // Sidebar groups fold open and closed (remembered per browser); the search box narrows the list.
   const [menuQuery, setMenuQuery] = useState('');
   const [folded, setFolded] = useState<string[]>(() => {
@@ -283,7 +291,8 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   const isOpen = (group: MenuGroup) => !!needle || !folded.includes(group.title) || group.items.some((item) => item.id === shownSection);
   const toggleGroup = (title: string) => setFolded(folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title]);
   const shownSection: Section = section === 'in' || section === 'out' ? 'mutasi' : section === 'catalog' ? 'items'
-    : section === 'pickup' || section === 'permintaan' || section === 'usulan' ? 'pengajuan' : section;
+    : section === 'pickup' || section === 'permintaan' || section === 'usulan' ? 'pengajuan'
+    : section === 'checklist' || section === 'verifikasi' || section === 'usulan-admin' ? 'antrean' : section;
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
     : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === shownSection)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
@@ -345,6 +354,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
               title={mini ? item.label : undefined} onClick={() => go(item.id)}>
               <span className="side-icon" aria-hidden="true"><i className={'fas ' + item.icon} /></span>
               <span className="side-label">{item.label}</span>
+              {item.id === 'antrean' && waiting > 0 && <span className="side-badge" aria-label={waiting + ' menunggu'}>{waiting > 99 ? '99+' : waiting}</span>}
             </button>)}
         </div>)}
       </nav>
@@ -385,12 +395,12 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
       : section === 'profil' ? <><ProfilePage /><DeviceApp /></>
       : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
-      : section === 'verifikasi' ? <AdminPermintaan />
-      : section === 'usulan-admin' ? <AdminUsulan />
-      : section === 'checklist' ? <Checklist />
       : section === 'pengajuan' || section === 'pickup' || section === 'permintaan' || section === 'usulan'
         ? <Pengajuan key={section} canExport={warehouse} initial={section === 'pengajuan' ? undefined : section}
             allowed={(['pickup', 'permintaan', 'usulan'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
+      : section === 'antrean' || section === 'checklist' || section === 'verifikasi' || section === 'usulan-admin'
+        ? <Verifikasi key={section} onChange={refreshWaiting}
+            initial={section === 'checklist' ? 'pickup' : section === 'verifikasi' ? 'permintaan' : section === 'usulan-admin' ? 'usulan' : undefined} />
       : section === 'mutasi' || section === 'in' || section === 'out'
         ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section}
             allowed={(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />

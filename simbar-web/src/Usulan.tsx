@@ -314,7 +314,8 @@ export function MyUsulan({ canExport, start, openId, onBack }: { canExport: bool
   </section>;
 }
 
-export function AdminUsulan() {
+// Opened from Verifikasi: `openId` opens one request, `onBack` returns to the queue.
+export function AdminUsulan({ openId, onBack }: { openId?: number; onBack?: () => void } = {}) {
   const options = useOptions();
   const [status, setStatus] = useState<'all' | Status>('pending');
   const [room, setRoom] = useState('');
@@ -325,6 +326,8 @@ export function AdminUsulan() {
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const state = useList(false, status, room, search, page, version);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     setMessage({ text: '', ok: true });
@@ -362,6 +365,7 @@ export function AdminUsulan() {
   }
 
   return <section className="panel">
+    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Kembali ke antrean</button>}
     <h2>Verifikasi usulan penerimaan</h2>
     <p>Setujui usulan untuk langsung mencatatnya sebagai barang aset.</p>
     <Message value={message} />

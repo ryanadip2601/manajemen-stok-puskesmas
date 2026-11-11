@@ -154,7 +154,8 @@ export function MyPickups({ start, onBack }: { start?: boolean; onBack?: () => v
   </section>;
 }
 
-export function Checklist() {
+// Opened from Verifikasi: `onBack` returns to the queue.
+export function Checklist({ onBack }: { onBack?: () => void } = {}) {
   const [status, setStatus] = useState<'all' | Status>('pending');
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
@@ -189,6 +190,7 @@ export function Checklist() {
   const tabs: ['all' | Status, string][] = [['pending', 'Menunggu'], ['approved', 'Disetujui'], ['completed', 'Selesai'], ['rejected', 'Ditolak'], ['all', 'Semua']];
 
   return <section className="panel">
+    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Kembali ke antrean</button>}
     <h2>Checklist pengambilan</h2>
     <p>Setujui permintaan untuk langsung mencatat barang keluar.</p>
     <div className="filters" role="group" aria-label="Status permintaan">

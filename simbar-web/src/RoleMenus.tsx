@@ -3,7 +3,7 @@ import { rpc } from './supabase';
 
 // Every menu in sidebar order. `share` marks the ones the administrator can hand to Admin Gudang and Staf;
 // Dashboard is always shown, Pengguna and Atur Menu stay with the administrator.
-export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
+export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
   | 'aset' | 'pemeliharaan' | 'penyusutan' | 'pickup' | 'permintaan' | 'usulan' | 'laporan' | 'users' | 'menus';
 // `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
 export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin' | 'parent'; hint: string; right?: boolean;
@@ -24,16 +24,16 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
     { id: 'usulan', label: 'Laporkan barang baru di ruangan', icon: 'fa-file-signature', color: 'blue', share: 'yes', right: true,
       hint: 'Usulan penerimaan; menjadi aset setelah disetujui.' },
   ] },
-  { title: 'Transaksi Gudang', items: [
+  { title: 'Gudang', items: [
     { id: 'mutasi', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
       hint: 'Barang masuk dan keluar dalam satu halaman; tampil jika salah satu hak di bawah dicentang.' },
     { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', right: true, hint: 'Tab Masuk: mencatat barang masuk; stok bertambah.' },
     { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', right: true, hint: 'Tab Keluar: mencatat barang keluar; stok berkurang.' },
-    { id: 'checklist', label: 'Checklist Pengambilan', icon: 'fa-clipboard-check', color: 'pink', share: 'yes', hint: 'Menyetujui pengambilan; stok langsung berkurang.' },
-  ] },
-  { title: 'Verifikasi', items: [
-    { id: 'verifikasi', label: 'Verifikasi Permintaan', icon: 'fa-hand-holding-medical', color: 'orange', share: 'yes', hint: 'Menyetujui permintaan; barang baru ikut dibuat.' },
-    { id: 'usulan-admin', label: 'Verifikasi Usulan', icon: 'fa-file-import', color: 'teal', share: 'yes', hint: 'Menyetujui usulan; aset baru ikut dibuat.' },
+    { id: 'antrean', label: 'Verifikasi', icon: 'fa-inbox', color: 'orange', share: 'parent', rights: ['checklist', 'verifikasi', 'usulan-admin'],
+      hint: 'Antrean semua pengajuan yang menunggu gudang; tampil jika salah satu hak di bawah dicentang. Laporan pemeliharaan ikut masuk untuk Admin Gudang.' },
+    { id: 'checklist', label: 'Pengambilan barang', icon: 'fa-clipboard-check', color: 'pink', share: 'yes', right: true, hint: 'Menyetujui pengambilan; stok langsung berkurang.' },
+    { id: 'verifikasi', label: 'Permintaan barang', icon: 'fa-hand-holding-medical', color: 'orange', share: 'yes', right: true, hint: 'Menyetujui permintaan; barang baru ikut dibuat.' },
+    { id: 'usulan-admin', label: 'Usulan aset', icon: 'fa-file-import', color: 'teal', share: 'yes', right: true, hint: 'Menyetujui usulan; aset baru ikut dibuat.' },
   ] },
   { title: 'Manajemen Aset', items: [
     { id: 'aset', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },

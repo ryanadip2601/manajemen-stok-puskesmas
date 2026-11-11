@@ -293,7 +293,8 @@ export function MyPermintaan({ start, openId, onBack }: { start?: boolean; openI
   </section>;
 }
 
-export function AdminPermintaan() {
+// Opened from Verifikasi: `openId` opens one request, `onBack` returns to the queue.
+export function AdminPermintaan({ openId, onBack }: { openId?: number; onBack?: () => void } = {}) {
   const options = useOptions();
   const [status, setStatus] = useState<'all' | Status>('pending');
   const [tipe, setTipe] = useState<'all' | Tipe>('all');
@@ -304,6 +305,8 @@ export function AdminPermintaan() {
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const state = useList(false, status, tipe, search, page, version);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     setMessage({ text: '', ok: true });
@@ -351,6 +354,7 @@ export function AdminPermintaan() {
   const open_ = detail && ['pending', 'diproses'].includes(detail.status);
 
   return <section className="panel">
+    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Kembali ke antrean</button>}
     <h2>Verifikasi permintaan barang</h2>
     <p>Proses, setujui, tolak, atau minta revisi permintaan dari petugas.</p>
     <Message value={message} />

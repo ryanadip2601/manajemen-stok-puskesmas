@@ -840,3 +840,26 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .request-kind { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--a); font-weight: 600; font-size: .84rem; }
 .request-note { display: block; max-width: 28ch; margin-top: 4px; color: var(--muted); font-size: .76rem; line-height: 1.35; }
 .request-table td:last-child { white-space: nowrap; }
+
+/* ---------- Verifikasi: waiting summary, overdue hint, count on the menu ---------- */
+.queue-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0 6px; }
+.queue-card {
+  display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.queue-card > i { grid-row: span 2; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: color-mix(in srgb, var(--a) 14%, transparent); color: var(--a); }
+.queue-card strong { font-size: 1.35rem; line-height: 1.1; color: var(--heading); }
+.queue-card span { color: var(--muted); font-size: .8rem; }
+.queue-card:not(:has(> i)) { grid-template-columns: 1fr; }
+.queue-card[aria-pressed="true"] { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, .2); }
+.queue-late { color: var(--bad-fg) !important; font-weight: 600; }
+.side-link { position: relative; }
+.side-badge {
+  margin-left: auto; min-width: 22px; padding: 0 7px; border-radius: 11px; background: #f43f5e; color: #fff;
+  font-size: .72rem; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 4px 10px -3px rgba(244, 63, 94, .6);
+}
+@media (min-width: 901px) {
+  .app.mini .side-badge { position: absolute; top: 2px; right: 6px; min-width: 18px; padding: 0 4px; font-size: .62rem; line-height: 16px; }
+}

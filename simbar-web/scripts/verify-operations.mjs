@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -456,6 +456,35 @@ try {
   const withoutUsulan = (await one(`SELECT public.simbar_my_requests('all', 'all', '', 1) AS r`)).r;
   assert.deepEqual(withoutUsulan.kinds, ['pickup', 'permintaan']);
   assert.ok(withoutUsulan.rows.every((row) => row.kind !== 'usulan'), 'kinds without the right are hidden');
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);
+
+  // Verifikasi: one warehouse queue across the four kinds, waiting items oldest first, rights respected.
+  await as(ADMIN);
+  const queue = (await one(`SELECT public.simbar_queue('all', 'menunggu', '', 1) AS q`)).q;
+  assert.deepEqual(queue.kinds, ['pickup', 'permintaan', 'usulan', 'pemeliharaan']);
+  assert.ok(queue.rows.every((row) => row.bucket === 'menunggu'));
+  const dates = queue.rows.map((row) => row.tanggal);
+  assert.deepEqual(dates, [...dates].sort(), 'waiting items come oldest first');
+  const waitingAll = (await one('SELECT public.simbar_queue_waiting() AS n')).n;
+  assert.equal(Number(waitingAll), Number(queue.waiting.all), 'menu count matches the queue');
+  assert.equal(['pickup', 'permintaan', 'usulan', 'pemeliharaan'].reduce((sum, k) => sum + Number(queue.waiting[k]), 0), Number(queue.waiting.all));
+  const everything = (await one(`SELECT public.simbar_queue('all', 'all', '', 1) AS q`)).q;
+  assert.equal(['menunggu', 'revisi', 'selesai', 'ditolak', 'dibatalkan'].reduce((sum, b) => sum + Number(everything.counts[b]), 0), Number(everything.counts.all));
+  const usulanOnly = (await one(`SELECT public.simbar_queue('usulan', 'all', '', 1) AS q`)).q;
+  assert.ok(usulanOnly.rows.every((row) => row.kind === 'usulan'));
+  await assert.rejects(db.query(`SELECT public.simbar_queue('all', 'lain', '', 1)`), /tidak valid/);
+  await as(STAFF);
+  const staffQueue = (await one(`SELECT public.simbar_queue('all', 'menunggu', '', 1) AS q`)).q;
+  assert.deepEqual(staffQueue.kinds, [], 'staff see no queue by default');
+  assert.equal(Number(staffQueue.total), 0);
+  assert.equal(Number((await one('SELECT public.simbar_queue_waiting() AS n')).n), 0);
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [[...defaults.staff, 'checklist']]);
+  await as(STAFF);
+  const staffChecklist = (await one(`SELECT public.simbar_queue('all', 'all', '', 1) AS q`)).q;
+  assert.deepEqual(staffChecklist.kinds, ['pickup'], 'a right adds its kind to the queue');
+  assert.ok(staffChecklist.rows.every((row) => row.kind === 'pickup'));
   await as(ADMIN);
   await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);
 

@@ -32,7 +32,8 @@ function Message({ value }: { value: { text: string; ok: boolean } }) {
   return value.text ? <p className={value.ok ? 'success' : 'notice'} role={value.ok ? 'status' : 'alert'}>{value.text}</p> : null;
 }
 
-export function Pemeliharaan({ warehouse }: { warehouse: boolean }) {
+// Opened from Verifikasi: `openId` opens one report, `onBack` returns to the queue.
+export function Pemeliharaan({ warehouse, openId, onBack }: { warehouse: boolean; openId?: number; onBack?: () => void }) {
   const empty = { search: '', ruangan: '', status: '', jenis: '', teknisi: '', dari: '', sampai: '' };
   const [options, setOptions] = useState<Options | null>(null);
   const [filters, setFilters] = useState(empty);
@@ -56,6 +57,8 @@ export function Pemeliharaan({ warehouse }: { warehouse: boolean }) {
       .then((data) => active && setState({ data })).catch((error: Error) => active && setState({ error: error.message }));
     return () => { active = false; };
   }, [filters, page, version]);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     setMessage({ text: '', ok: true });
@@ -111,6 +114,7 @@ export function Pemeliharaan({ warehouse }: { warehouse: boolean }) {
   const last = Math.max(1, Math.ceil(total / perPage));
 
   return <section className="panel">
+    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Kembali ke antrean</button>}
     <div className="panel-head">
       <h2>Pemeliharaan aset</h2>
       {!view && <button className="primary" disabled={!options} onClick={() => { setMessage({ text: '', ok: true }); setView({ mode: 'new' }); }}>Laporkan pemeliharaan</button>}
