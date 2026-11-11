@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { BRAND_FULL, LogoMark } from './logo';
 import { client, rpc } from './supabase';
 
 const auth = client?.auth ?? null;
@@ -80,9 +81,9 @@ export function AuthScreen() {
   const switchTo = (next: typeof mode) => { setMode(next); setMessage({ text: '', ok: true }); };
   return <section className="login-layout">
     <div className="login-intro">
-      <span className="logo-tile big" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
+      <span className="logo-tile big" aria-hidden="true"><LogoMark /></span>
       <h1 className="gradient-text">SIMBAR</h1>
-      <p className="login-sub">Sistem Manajemen Barang</p>
+      <p className="login-sub">{BRAND_FULL}</p>
       <p className="login-org">UPTD Puskesmas Karang Rejo</p>
     </div>
     {mode === 'login' ? <form className="login-card" onSubmit={login}>

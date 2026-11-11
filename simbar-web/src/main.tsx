@@ -17,6 +17,7 @@ import { Users } from './Users';
 import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useSeason, type SeasonChoice } from './effects';
 import { MusicMenu, useMusic, type Music } from './music';
 import { HeaderClock } from './clock';
+import { BRAND_FULL, LogoMark } from './logo';
 import { DeviceApp, forgetThisDevice, pushSupported, registerServiceWorker, setBadge } from './push';
 
 registerServiceWorker();
@@ -208,8 +209,9 @@ function PublicHome({ notice, controls }: { notice: string; controls: Ambience }
   return <div className="public-shell">
     <header className="topbar public-topbar">
       <div className="public-brand">
-        <span className="logo-tile small" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
-        <div><strong className="gradient-text">SIMBAR</strong><span>Puskesmas Karang Rejo</span></div>
+        <span className="logo-tile small" aria-hidden="true"><LogoMark /></span>
+        <div className="brand-text"><strong className="gradient-text">SIMBAR</strong>
+          <span className="brand-full">{BRAND_FULL}</span><span>Puskesmas Karang Rejo</span></div>
       </div>
       <HeaderClock />
       <AmbientControls controls={controls} />
@@ -295,8 +297,9 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   return <div className={'app' + (mini ? ' mini' : '') + (drawer ? ' drawer-open' : '')}>
     <aside className="sidebar">
       <div className="side-brand">
-        <span className="logo-tile" aria-hidden="true"><i className="fas fa-boxes-stacked" /></span>
-        <div className="side-brand-text"><strong className="gradient-text">SIMBAR</strong><span>Puskesmas Karang Rejo</span></div>
+        <span className="logo-tile" aria-hidden="true"><LogoMark /></span>
+        <div className="side-brand-text"><strong className="gradient-text">SIMBAR</strong>
+          <span className="brand-full">{BRAND_FULL}</span><span>Puskesmas Karang Rejo</span></div>
       </div>
       <nav className="side-nav" aria-label="Menu SIMBAR">
         {groups.map((group) => <div className="side-group" key={group.title}>

@@ -83,6 +83,7 @@ a { color: var(--link); }
 .side-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 16px 16px; border-bottom: 1px solid rgba(51, 65, 85, .5); text-align: center; }
 .side-brand-text strong { display: block; font-size: 1.55rem; font-weight: 900; letter-spacing: .08em; line-height: 1.2; }
 .side-brand-text span { display: block; font-size: .78rem; color: #94a3b8; }
+.side-brand-text .brand-full { margin-top: 2px; font-size: .8rem; font-weight: 650; color: #cbd5e1; }
 .side-nav { flex: 1; overflow-y: auto; padding: 8px 12px 12px; }
 .side-nav::-webkit-scrollbar-track { background: transparent; }
 .side-nav::-webkit-scrollbar-thumb { background: #475569; }
@@ -501,8 +502,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
   background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .55) 50%, transparent 60%);
   transform: translateX(-100%); animation: logo-shine 4.5s ease-in-out infinite;
 }
-.logo-tile i { position: relative; z-index: 1; animation: logo-bob 2.6s ease-in-out infinite; }
-.side-brand:hover .logo-tile i, .login-intro:hover .logo-tile i { animation: logo-wiggle .7s ease-in-out; }
+.logo-mark { position: relative; z-index: 1; display: block; width: 66%; height: 66%; animation: logo-bob 2.6s ease-in-out infinite; }
+.side-brand:hover .logo-mark, .login-intro:hover .logo-mark, .public-brand:hover .logo-mark { animation: logo-wiggle .7s ease-in-out; }
 @keyframes logo-float {
   0%, 100% { transform: translateY(0) rotate(var(--tilt)); box-shadow: 0 10px 15px -3px rgba(16, 185, 129, .25); }
   50% { transform: translateY(-5px) rotate(calc(var(--tilt) - 2deg)); box-shadow: 0 18px 28px -6px rgba(16, 185, 129, .45); }
@@ -640,7 +641,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .public-shell { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
 .public-brand { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; }
 .public-brand strong { display: block; font-size: 1.35rem; font-weight: 900; letter-spacing: .08em; line-height: 1.1; }
-.public-brand span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .74rem; color: var(--muted); }
+.brand-text { min-width: 0; }
+.brand-text span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .74rem; line-height: 1.35; color: var(--muted); }
+.brand-text .brand-full { font-weight: 650; color: var(--text); }
 .logo-tile.small { width: 40px; height: 40px; border-radius: 12px; font-size: 1.05rem; }
 .login-button { min-height: 40px; }
 .public-content { margin: 0 auto; }
@@ -714,7 +717,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 @media (max-width: 520px) {
   .topbar-title p { display: flex; }
   .topbar-title .crumb, .topbar-title .clock-date { display: none; }
-  .public-brand span { display: none; }
+  .brand-text span:not(.brand-full) { display: none; }
+  .brand-text .brand-full { font-size: .64rem; line-height: 1.2; white-space: normal; }
   .public-brand strong { font-size: 1.1rem; }
   .logo-tile.small { width: 36px; height: 36px; font-size: .95rem; }
   .login-button { min-height: 36px; padding: 0 12px; }
