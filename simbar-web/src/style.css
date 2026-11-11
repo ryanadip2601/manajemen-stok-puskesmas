@@ -1019,3 +1019,29 @@ body.printing-labels .label-print { display: block; }
 .foto-grid strong { font-size: .84rem; color: var(--heading); line-height: 1.25; }
 .foto-grid span { font-size: .72rem; color: var(--muted); }
 .foto-grid .file-button { min-height: 34px; padding: 6px 12px; font-size: .82rem; }
+
+/* ---------- Foto aset, Pindai label ---------- */
+.aset-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; }
+.aset-toolbar .aset-tabs { margin: 0; }
+.scan-button { margin-left: auto; min-height: 44px; }
+.item-thumb.loading { background: linear-gradient(90deg, var(--surface-3), var(--surface), var(--surface-3)); background-size: 200% 100%; animation: thumb-shimmer 1.2s linear infinite; }
+@keyframes thumb-shimmer { to { background-position: -200% 0; } }
+.contoh-wrap { position: relative; display: inline-block; line-height: 0; }
+.item-thumb.contoh { opacity: .72; filter: grayscale(.35); }
+.contoh-badge { position: absolute; left: 2px; bottom: 2px; padding: 1px 5px; border-radius: 6px; background: rgba(15, 23, 42, .78); color: #fff; font-size: .6rem; font-weight: 700; line-height: 1.5; }
+.contoh-wrap.big .contoh-badge { left: 8px; bottom: 8px; font-size: .78rem; padding: 3px 9px; }
+.asset-photo-panel { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin: 4px 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-3); }
+.asset-photo-big { border-radius: 14px; object-fit: cover; }
+.asset-photo-info { flex: 1 1 220px; display: flex; flex-direction: column; gap: 8px; }
+.asset-photo-info .item-photo-source { margin: 0; }
+.big-action { min-height: 48px; padding: 10px 18px; font-size: 1rem; }
+.room-progress { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.room-progress li { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr auto; align-items: center; gap: 10px; font-size: .86rem; }
+.room-progress .done { color: #059669; font-weight: 700; }
+.foto-progress.small { height: 8px; margin: 0; }
+.scanner { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(2, 6, 23, .82); }
+.scanner-box { width: min(100%, 460px); display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--surface); }
+.scanner-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.scanner-view { position: relative; overflow: hidden; border-radius: 14px; background: #000; aspect-ratio: 1; }
+.scanner-view video { width: 100%; height: 100%; object-fit: cover; }
+.scanner-frame { position: absolute; inset: 18%; border: 3px solid #34d399; border-radius: 16px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .35); }

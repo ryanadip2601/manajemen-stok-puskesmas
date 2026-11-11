@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { MAX_PHOTO_BYTES, error, headers, readPhoto, rpc, uploadItemPhoto, uploadPhoto } from './_shared.js';
+import { MAX_PHOTO_BYTES, error, headers, readPhoto, readPhotoThumb, rpc, uploadItemPhoto, uploadPhoto } from './_shared.js';
 
 export default { fetch: handler };
 
@@ -23,7 +23,9 @@ async function read(request) {
   const { data, response } = await rpc(request, 'simbar_media_lookup', { reference });
   if (response) return response;
   if (!data) return error(404, 'Foto tidak ditemukan.');
-  return readPhoto(data);
+  // ?w=96|160|320|640 returns a small square version for lists and detail views.
+  const width = Number(new URL(request.url).searchParams.get('w') ?? 0);
+  return width ? readPhotoThumb(data, width) : readPhoto(data);
 }
 
 async function upload(request) {

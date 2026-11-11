@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -589,6 +589,27 @@ try {
   await as(STAFF);
   assert.equal((await one('SELECT public.simbar_can_edit_items() AS ok')).ok, false);
   await assert.rejects(db.query(`SELECT public.simbar_item_set_photo($1, 'https://x.test/a.jpg')`, [keepId]), /Akses ditolak/);
+  await as(ADMIN);
+
+  // Foto aset: the warehouse photographs an asset; same-name assets without a photo show it as an example.
+  await as(ADMIN);
+  const twin = await one(`SELECT lower(nama_aset) AS nama, min(id) AS a, max(id) AS b FROM simbar.barang_aset
+      GROUP BY lower(nama_aset) HAVING count(*) >= 2 AND count(*) FILTER (WHERE coalesce(foto, '') <> '') = 0 LIMIT 1`);
+  const fotoHash = 'ab'.repeat(32);
+  await db.query(`INSERT INTO simbar.media_objects (legacy_path, legacy_reference, cloudinary_asset_id, cloudinary_public_id, cloudinary_version, format, file_size, sha256, uploaded_by, uploaded_at)
+      VALUES ($1, $2, $3, $4, 1, 'jpg', 1234, $5, $6, now())`,
+    ['cloudinary/simbar-uploads/' + fotoHash, 'media:' + fotoHash, '7f'.repeat(16), 'simbar-uploads/' + fotoHash, '6e'.repeat(32), admin.id]);
+  const saved = (await one('SELECT public.simbar_aset_set_foto($1, $2) AS r', [twin.a, 'media:' + fotoHash])).r;
+  assert.equal(saved.foto, 'media:' + fotoHash);
+  assert.ok((await one('SELECT foto_diambil_at FROM simbar.barang_aset WHERE id = $1', [twin.a])).foto_diambil_at, 'the photo time is kept');
+  const twinOther = (await one('SELECT public.simbar_aset_get($1) AS g', [twin.b])).g;
+  assert.equal(twinOther.contoh?.foto, 'media:' + fotoHash, 'a same-name asset shows the photo as an example');
+  assert.equal((await one('SELECT public.simbar_aset_get($1) AS g', [twin.a])).g.contoh, null, 'an asset with its own photo needs no example');
+  const progress = (await one('SELECT public.simbar_aset_foto_progress() AS p')).p;
+  assert.equal(progress.ruangan.reduce((sum, r) => sum + Number(r.total), 0), Number(progress.total));
+  await assert.rejects(db.query(`SELECT public.simbar_aset_set_foto($1, 'media:' || $2)`, [twin.b, 'ef'.repeat(32)]), /Foto tidak ditemukan/);
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_aset_set_foto($1, NULL)', [twin.a]), /Akses ditolak/);
   await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);

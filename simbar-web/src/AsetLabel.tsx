@@ -12,9 +12,12 @@ type LabelAsset = { id: number; kode: string; nama: string; merk: string | null;
   tahun: number | null; ruangan: string | null; kategori: string | null };
 type Option = { id: number; name: string };
 type Label = { asset: LabelAsset; unit: string };
+type Progress = { total: number; difoto: number; ruangan: { id: number; nama: string; total: number; difoto: number }[] };
 
 const number = new Intl.NumberFormat('id-ID');
 const PER_SHEET = 24;
+// Labels always point at the main address, whichever address the sheet is printed from, so phones open the installed app.
+const LABEL_ORIGIN = 'https://simbarkro.brey26.id';
 
 // One label per physical unit: "0005-0007" becomes 0005, 0006, 0007; without a register the unit is "1/3".
 function unitsOf(asset: LabelAsset): string[] {
@@ -44,7 +47,7 @@ function Qr({ text }: { text: string }) {
 function LabelCard({ label, header }: { label: Label; header: string }) {
   const { asset, unit } = label;
   return <div className="label-card">
-    <Qr text={`${window.location.origin}/?aset=${asset.id}`} />
+    <Qr text={`${LABEL_ORIGIN}/?aset=${asset.id}`} />
     <div className="label-text">
       <span className="label-org">{header}</span>
       <strong className="label-code">{asset.kode}</strong>
@@ -58,6 +61,8 @@ function LabelCard({ label, header }: { label: Label; header: string }) {
 export function AsetLabel() {
   const [suspicious, setSuspicious] = useState<Suspicious[] | null>(null);
   const [status, setStatus] = useState<RegisterStatus | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [showRooms, setShowRooms] = useState(false);
   const [options, setOptions] = useState<{ rooms: Option[]; categories: Option[] } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [assets, setAssets] = useState<LabelAsset[] | null>(null);
@@ -72,6 +77,7 @@ export function AsetLabel() {
   useEffect(() => {
     rpc<Suspicious[]>('simbar_aset_suspicious').then(setSuspicious).catch((error: Error) => setMessage({ text: error.message, ok: false }));
     rpc<RegisterStatus>('simbar_aset_register_status').then(setStatus).catch(() => {});
+    rpc<Progress>('simbar_aset_foto_progress').then(setProgress).catch(() => {});
   }, [version]);
   useEffect(() => { rpc<{ rooms: Option[]; categories: Option[] }>('simbar_aset_options').then(setOptions).catch(() => {}); }, []);
   useEffect(() => {
@@ -141,6 +147,22 @@ export function AsetLabel() {
             </form></td>
           </tr>)}</tbody></table>
       </div>
+    </section>}
+
+    {progress && <section className="panel">
+      <div className="panel-head">
+        <h2><i className="fas fa-camera" aria-hidden="true" /> Foto aset</h2>
+        <button className="secondary" onClick={() => setShowRooms(!showRooms)} aria-expanded={showRooms}>{showRooms ? 'Tutup' : 'Per ruangan'}</button>
+      </div>
+      <div className="foto-progress" role="img" aria-label={`${progress.difoto} dari ${progress.total} aset sudah difoto`}>
+        <span style={{ width: `${progress.total ? (progress.difoto / progress.total) * 100 : 0}%` }} /></div>
+      <p>{number.format(progress.difoto)} dari {number.format(progress.total)} aset sudah difoto. Cara cepat: tempel label, tekan
+        <strong> Pindai label</strong> di menu Aset, pindai QR, lalu <strong>Ambil foto</strong> dan <strong>Pindai berikutnya</strong>.</p>
+      {showRooms && <ul className="room-progress">{progress.ruangan.map((room) => <li key={room.id}>
+        <span>{room.nama}</span>
+        <span className="foto-progress small"><span style={{ width: `${(room.difoto / room.total) * 100}%` }} /></span>
+        <span className={room.difoto === room.total ? 'done' : undefined}>{room.difoto}/{room.total}</span>
+      </li>)}</ul>}
     </section>}
 
     <section className="panel">

@@ -44,7 +44,8 @@ BEGIN
     WITH matched AS MATERIALIZED (
         SELECT a.id, a.kode_aset AS code, a.nama_aset AS name, a.merk, a.jumlah, a.kondisi, a.status_aset AS status,
                a.butuh_perbaikan AS repair, a.tahun_perolehan AS year, a.harga_perolehan AS price, a.nomor_register AS register,
-               a.sumber_dana AS dana, k.nama_kategori AS category, k.golongan, r.nama_ruangan AS room, a.foto IS NOT NULL AS has_photo
+               a.sumber_dana AS dana, k.nama_kategori AS category, k.golongan, r.nama_ruangan AS room, a.foto IS NOT NULL AS has_photo,
+               a.foto AS photo, CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id) END AS contoh
         FROM simbar.barang_aset a
         JOIN simbar.kategori_aset k ON k.id = a.kategori_aset_id
         JOIN simbar.ruangan r ON r.id = a.ruangan_id
@@ -82,6 +83,8 @@ DECLARE
 BEGIN
     SELECT to_jsonb(a) || jsonb_build_object('kategori', k.nama_kategori, 'golongan', k.golongan, 'umur_manfaat_kategori', k.umur_manfaat,
             'ruangan', r.nama_ruangan, 'created_by_name', u.name,
+            'contoh', CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id) END,
+            'foto_diambil_oleh_name', (SELECT name FROM simbar.users WHERE id = a.foto_diambil_oleh),
             'pemeliharaan', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'tanggal', p.tanggal_pemeliharaan,
                     'jenis', p.jenis_pemeliharaan, 'status', p.status, 'teknisi', p.teknisi, 'deskripsi', p.deskripsi_masalah)
                 ORDER BY p.tanggal_pemeliharaan DESC, p.id DESC), '[]')

@@ -145,3 +145,38 @@ export const isRealPhoto = (source?: string | null) => source === 'Foto asli';
 export const photoSourceLabel = (source?: string | null) => !source ? 'Belum ada foto'
   : source === 'Foto asli' ? 'Foto asli' : source.startsWith('Wikimedia') ? 'Foto sementara (Wikimedia Commons)'
   : source.startsWith('Google') ? 'Foto sementara (Google/toko online)' : source.startsWith('Gambar sementara') ? 'Gambar sementara' : 'Foto sementara (' + source + ')';
+
+// ---------- Private photos as small squares (asset lists and detail) ----------
+// Each size of each photo is fetched once per session and reused, so lists do not flicker or refetch.
+const thumbCache = new Map<string, Promise<string>>();
+function privateThumbUrl(reference: string, size: number) {
+  const key = reference + '@' + size;
+  let pending = thumbCache.get(key);
+  if (!pending) {
+    pending = token().then((value) => fetch(`/api/media?ref=${encodeURIComponent(reference)}&w=${size}`, { headers: { Authorization: 'Bearer ' + value } }))
+      .then(async (response) => {
+        if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Foto belum bisa dimuat.');
+        return URL.createObjectURL(await response.blob());
+      });
+    pending.catch(() => thumbCache.delete(key));
+    thumbCache.set(key, pending);
+  }
+  return pending;
+}
+
+export function PrivateThumb({ reference, alt, size, display = size, className = '' }: {
+  reference: string; alt: string; size: 96 | 160 | 320 | 640; display?: number; className?: string;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setSrc(null);
+    setFailed(false);
+    privateThumbUrl(reference, size).then((url) => { if (live) setSrc(url); }).catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [reference, size]);
+  if (failed) return <span className={'item-thumb empty ' + className} style={{ width: display, height: display }} title="Foto belum bisa dimuat"><i className="fas fa-image" /></span>;
+  if (!src) return <span className={'item-thumb empty loading ' + className} style={{ width: display, height: display }} aria-hidden="true" />;
+  return <img className={'item-thumb ' + className} src={src} alt={alt} width={display} height={display} />;
+}

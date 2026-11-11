@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { PhotoField, StoredPhoto } from './media';
+import { PhotoField } from './media';
 import { exportAssetsCsv } from './Penyusutan';
 import { rpc } from './supabase';
+import { AssetPhotoPanel, AssetThumb, type Contoh } from './AsetFoto';
 
 type Room = { id: number; name: string; lokasi: string | null; keterangan: string | null; active: boolean; placeholder: boolean; assets: number };
 type Category = {
@@ -12,11 +13,13 @@ type Options = { rooms: Room[]; categories: Category[]; years: number[] };
 type Row = {
   id: number; code: string; name: string; merk: string | null; jumlah: number; kondisi: string; status: string; repair: boolean;
   year: number | null; price: number | null; register: string | null; category: string; room: string; has_photo: boolean;
+  photo: string | null; contoh: Contoh;
 };
 type Summary = { total: number; baik: number; rusak_ringan: number; rusak_berat: number; butuh_perbaikan: number; nilai: number };
 type Page = { summary: Summary; total: number; rows: Row[] };
 type Detail = Record<string, string | number | boolean | null> & {
   id: number; kode_aset: string; nama_aset: string; foto: string | null; kategori: string; ruangan: string;
+  contoh: Contoh; foto_diambil_at: string | null; foto_diambil_oleh_name: string | null;
   pemeliharaan: { id: number; tanggal: string; jenis: string; status: string; teknisi: string; deskripsi: string }[];
 };
 
@@ -51,8 +54,9 @@ function useOptions(version: number) {
 }
 
 // `section` shows one part without the inner tab bar (the Aset menu has its own tabs); `onReport` adds "Laporkan rusak".
-export function Assets({ warehouse, section, onReport, openId }: {
+export function Assets({ warehouse, section, onReport, openId, onScanNext }: {
   warehouse: boolean; section?: 'list' | 'rooms' | 'categories'; onReport?: (asetId: number) => void; openId?: number;
+  onScanNext?: () => void;
 }) {
   const [chosen, setTab] = useState<'list' | 'rooms' | 'categories'>('list');
   const tab = section ?? chosen;
@@ -67,12 +71,13 @@ export function Assets({ warehouse, section, onReport, openId }: {
     {!options ? <p role="status">Memuat data aset…</p>
       : tab === 'rooms' ? <Rooms options={options} refresh={refresh} />
       : tab === 'categories' ? <Categories options={options} refresh={refresh} />
-      : <AssetList options={options} warehouse={warehouse} refresh={refresh} onReport={onReport} openId={openId} />}
+      : <AssetList options={options} warehouse={warehouse} refresh={refresh} onReport={onReport} openId={openId} onScanNext={onScanNext} />}
   </>;
 }
 
-function AssetList({ options, warehouse, refresh, onReport, openId }: {
+function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }: {
   options: Options; warehouse: boolean; refresh: () => void; onReport?: (asetId: number) => void; openId?: number;
+  onScanNext?: () => void;
 }) {
   const empty = { search: '', kategori: '', ruangan: '', kondisi: '', status: '', tahun: '', butuh_perbaikan: false };
   const [filters, setFilters] = useState(empty);
@@ -157,6 +162,8 @@ function AssetList({ options, warehouse, refresh, onReport, openId }: {
     {view?.mode === 'detail' && <AssetDetail detail={view.detail} warehouse={warehouse} busy={busy}
       onEdit={() => setView({ mode: 'edit', detail: view.detail })} onClose={() => setView(null)}
       onReport={onReport ? () => onReport(view.detail.id) : undefined}
+      onScanNext={view.detail.id === openId ? onScanNext : undefined}
+      onPhoto={(foto, at, by) => { setView({ mode: 'detail', detail: { ...view.detail, foto, contoh: null, foto_diambil_at: at, foto_diambil_oleh_name: by } as Detail }); setVersion((v) => v + 1); }}
       onDelete={() => { if (confirm(`Hapus aset ${view.detail.nama_aset}? Riwayat pemeliharaannya ikut terhapus.`)) {
         run(() => rpc('simbar_aset_delete', { aset_ids: [view.detail.id] }), () => 'Barang aset berhasil dihapus.');
       } }} />}
@@ -203,7 +210,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId }: {
         <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Tabel barang aset">
           <table>
             <thead><tr>{warehouse && <th scope="col"><span className="sr-only">Pilih</span></th>}
-              <th scope="col">Nama dan kode</th><th scope="col">Kategori</th><th scope="col">Ruangan</th>
+              <th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Nama dan kode</th><th scope="col">Kategori</th><th scope="col">Ruangan</th>
               <th scope="col">Kondisi</th><th scope="col">Tahun</th><th scope="col">Nilai</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
             <tbody>{state.data.rows.map((row) => <tr key={row.id}>
               {warehouse && <td><input type="checkbox" aria-label={'Pilih ' + row.name} checked={selected.has(row.id)} onChange={(event) => {
@@ -211,6 +218,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId }: {
                 if (event.target.checked) next.add(row.id); else next.delete(row.id);
                 setSelected(next);
               }} /></td>}
+              <td className="thumb-cell"><AssetThumb photo={row.photo} contoh={row.contoh} name={row.name} /></td>
               <th scope="row"><strong>{row.name}</strong><span>{row.code}{row.merk ? ' · ' + row.merk : ''}</span></th>
               <td>{row.category}</td><td>{row.room}</td>
               <td><span className={'badge kondisi-' + row.kondisi}>{kondisiLabels[row.kondisi]}</span>
@@ -230,8 +238,9 @@ function AssetList({ options, warehouse, refresh, onReport, openId }: {
   </section>;
 }
 
-function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onReport }: {
+function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onReport, onScanNext, onPhoto }: {
   detail: Detail; warehouse: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onClose: () => void; onReport?: () => void;
+  onScanNext?: () => void; onPhoto: (foto: string, at: string, by: string) => void;
 }) {
   const fields: [string, React.ReactNode][] = [
     ['Kode aset', detail.kode_aset], ['Kategori', `${detail.kategori} · ${golonganLabels[String(detail.golongan)] ?? detail.golongan}`],
@@ -246,11 +255,12 @@ function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onRep
   ];
   return <div className="record-form">
     <h3>{detail.nama_aset}</h3>
+    <AssetPhotoPanel asetId={detail.id} name={detail.nama_aset} photo={detail.foto} contoh={detail.contoh} takenAt={detail.foto_diambil_at}
+      takenBy={detail.foto_diambil_oleh_name} canTake={warehouse} onSaved={onPhoto} onScanNext={onScanNext} />
     <dl className="detail-list">
       {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       {detail.spesifikasi && <div className="wide"><dt>Spesifikasi</dt><dd>{detail.spesifikasi}</dd></div>}
       {detail.keterangan && <div className="wide"><dt>Keterangan</dt><dd>{detail.keterangan}</dd></div>}
-      {detail.foto && <div className="wide"><dt>Foto</dt><dd><StoredPhoto reference={detail.foto} alt={'Foto ' + detail.nama_aset} /></dd></div>}
       <div className="wide"><dt>Pemeliharaan terakhir</dt><dd>{detail.pemeliharaan.length ? <ul className="plain-list">
         {detail.pemeliharaan.map((entry) => <li key={entry.id}>{date(entry.tanggal)} · {jenisLabels[entry.jenis]} · {pemeliharaanStatus[entry.status]} · {entry.teknisi}
           <span className="cell-note">{entry.deskripsi}</span></li>)}

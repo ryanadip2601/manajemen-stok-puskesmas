@@ -43,6 +43,25 @@ function sign(params, secret) {
   return createHash('sha256').update(payload + secret).digest('hex');
 }
 
+// A small square version of a private photo (signed delivery URL with a transformation), cached by the browser for a day.
+const THUMB_SIZES = new Set([96, 160, 320, 640]);
+export async function readPhotoThumb({ publicId, format }, width) {
+  const config = cloudinary();
+  if (!config) return error(503, 'Koneksi foto belum tersedia.');
+  if (!/^simbar-(hostinger|uploads)\/[0-9a-f]{64}$/.test(publicId) || !['jpg', 'png'].includes(format) || !THUMB_SIZES.has(width)) {
+    return error(400, 'Data foto tidak valid.');
+  }
+  const transformation = `c_fill,g_auto,w_${width},h_${width},q_auto,f_jpg`;
+  const signature = createHash('sha1').update(`${transformation}/${publicId}.${format}${config.secret}`).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').slice(0, 8);
+  const url = `https://res.cloudinary.com/${encodeURIComponent(config.cloud)}/image/authenticated/s--${signature}--/${transformation}/${publicId}.${format}`;
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+  if (!response.ok) return error(502, 'Foto belum bisa diunduh.');
+  const image = await response.arrayBuffer();
+  if (!image.byteLength || image.byteLength > MAX_PHOTO_BYTES) return error(502, 'Ukuran foto tidak sesuai.');
+  return new Response(image, { headers: { ...headers, 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' } });
+}
+
 // Streams a private Cloudinary original back to the browser after the database approved the request.
 export async function readPhoto({ publicId, format, size }) {
   const config = cloudinary();
