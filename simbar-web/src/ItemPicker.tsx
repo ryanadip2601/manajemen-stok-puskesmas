@@ -61,7 +61,7 @@ export function ItemPicker({ items, value, defaultValue = '', onChange, name, re
   const shown = open ? query : current ? `${current.name}${current.code ? ' (' + current.code + ')' : ''}` : allLabel && !selected ? allLabel : '';
   let lastCategory: string | undefined;
   return <div className="item-picker" ref={box}>
-    {current && !open && current.photo !== undefined ? <span className="item-picker-icon photo"><ItemThumb url={current.photo} name={current.name} size={26} /></span>
+    {current && !open && current.photo !== undefined ? <span className="item-picker-icon photo"><ItemThumb url={current.photo} name={current.name} size={26} zoom={false} /></span>
       : <i className="fas fa-magnifying-glass item-picker-icon" aria-hidden="true" />}
     <input type="text" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-label={label}
       aria-activedescendant={open && options.length ? `${listId}-${active}` : undefined}
@@ -80,7 +80,7 @@ export function ItemPicker({ items, value, defaultValue = '', onChange, name, re
           <li key={item ? item.id : 'all'} id={`${listId}-${index}`} role="option" aria-selected={item ? String(item.id) === selected : !selected}
             aria-disabled={disabled} className={'item-picker-option' + (index === active ? ' active' : '') + (disabled ? ' disabled' : '')}
             onMouseDown={(event) => { event.preventDefault(); choose(item); }} onMouseEnter={() => setActive(index)}>
-            {item ? <>{item.photo !== undefined && <ItemThumb url={item.photo} name={item.name} size={34} />}<span className="item-picker-text"><span className="item-picker-name">{item.name}</span>
+            {item ? <>{item.photo !== undefined && <ItemThumb url={item.photo} name={item.name} size={34} zoom={false} />}<span className="item-picker-text"><span className="item-picker-name">{item.name}</span>
               <span className="item-picker-meta">{[item.code, item.stock !== undefined ? `stok ${number.format(item.stock)} ${item.unit ?? ''}` : null, item.note]
                 .filter(Boolean).join(' · ')}{disabled ? ' · sudah dipilih' : ''}</span></span></> : <span className="item-picker-name">{allLabel}</span>}
           </li>];

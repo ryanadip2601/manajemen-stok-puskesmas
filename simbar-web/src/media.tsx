@@ -68,10 +68,10 @@ export function StoredPhoto({ reference, alt }: { reference: string; alt: string
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [reference]);
-  if (isLink(reference)) return <img className="request-photo" src={reference} alt={alt} referrerPolicy="no-referrer" loading="lazy" />;
+  if (isLink(reference)) return <img className="request-photo zoomable" src={reference} alt={alt} referrerPolicy="no-referrer" loading="lazy" {...zoomProps({ reference, alt })} />;
   if (state.error) return <span className="cell-note">{state.error}</span>;
   if (!state.src) return <span className="cell-note" role="status">Memuat foto…</span>;
-  return <img className="request-photo" src={state.src} alt={alt} />;
+  return <img className="request-photo zoomable" src={state.src} alt={alt} {...zoomProps({ reference, alt })} />;
 }
 
 // One photo field: keeps the current reference, uploads a replacement, or clears it.
@@ -121,10 +121,11 @@ export function photoThumb(url: string, size: number) {
     ? url.replace('/image/upload/', `/image/upload/c_pad,b_white,w_${size},h_${size},f_auto,q_auto/`) : url;
 }
 
-export function ItemThumb({ url, name, size = 44 }: { url?: string | null; name: string; size?: number }) {
+export function ItemThumb({ url, name, size = 44, zoom = true }: { url?: string | null; name: string; size?: number; zoom?: boolean }) {
   const [broken, setBroken] = useState(false);
   if (!url || broken) return <span className="item-thumb empty" style={{ width: size, height: size }} aria-hidden="true"><i className="fas fa-box" /></span>;
-  return <img className="item-thumb" src={photoThumb(url, size * 2)} alt={'Foto ' + name} width={size} height={size}
+  return <img className={'item-thumb' + (zoom ? ' zoomable' : '')} src={photoThumb(url, size * 2)} alt={'Foto ' + name} width={size} height={size}
+    {...(zoom ? zoomProps({ url, alt: 'Foto ' + name, caption: name }) : {})}
     loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
 }
 
@@ -164,8 +165,8 @@ function privateThumbUrl(reference: string, size: number) {
   return pending;
 }
 
-export function PrivateThumb({ reference, alt, size, display = size, className = '' }: {
-  reference: string; alt: string; size: 96 | 160 | 320 | 640; display?: number; className?: string;
+export function PrivateThumb({ reference, alt, size, display = size, className = '', caption }: {
+  reference: string; alt: string; size: 96 | 160 | 320 | 640; display?: number; className?: string; caption?: string;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -178,5 +179,61 @@ export function PrivateThumb({ reference, alt, size, display = size, className =
   }, [reference, size]);
   if (failed) return <span className={'item-thumb empty ' + className} style={{ width: display, height: display }} title="Foto belum bisa dimuat"><i className="fas fa-image" /></span>;
   if (!src) return <span className={'item-thumb empty loading ' + className} style={{ width: display, height: display }} aria-hidden="true" />;
-  return <img className={'item-thumb ' + className} src={src} alt={alt} width={display} height={display} />;
+  return <img className={'item-thumb zoomable ' + className} src={src} alt={alt} width={display} height={display}
+    {...zoomProps({ reference, alt, caption: caption ?? alt })} />;
+}
+
+// ---------- Pop-up photo viewer: click any photo to see it large ----------
+type PhotoRequest = { url?: string | null; reference?: string | null; alt: string; caption?: string };
+export function openPhoto(request: PhotoRequest) {
+  window.dispatchEvent(new CustomEvent<PhotoRequest>('simbar-photo', { detail: request }));
+}
+// Props that make an <img> open the viewer on click or Enter.
+export function zoomProps(request: PhotoRequest) {
+  return {
+    role: 'button', tabIndex: 0, title: 'Klik untuk memperbesar', 'data-zoom': '',
+    onClick: (event: React.MouseEvent) => { event.stopPropagation(); event.preventDefault(); openPhoto(request); },
+    onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPhoto(request); } },
+  } as const;
+}
+
+export function PhotoViewer() {
+  const [request, setRequest] = useState<PhotoRequest | null>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const [problem, setProblem] = useState('');
+  useEffect(() => {
+    const show = (event: Event) => setRequest((event as CustomEvent<PhotoRequest>).detail);
+    window.addEventListener('simbar-photo', show);
+    return () => window.removeEventListener('simbar-photo', show);
+  }, []);
+  useEffect(() => {
+    if (!request) return;
+    let live = true;
+    let objectUrl: string | undefined;
+    setSrc(null);
+    setProblem('');
+    if (request.url) setSrc(photoThumb(request.url, 1200).replace('c_pad,b_white,w_1200,h_1200', 'c_limit,w_1600,h_1600'));
+    else if (request.reference) {
+      if (isLink(request.reference)) setSrc(request.reference);
+      else token().then((value) => fetch('/api/media?ref=' + encodeURIComponent(request.reference!), { headers: { Authorization: 'Bearer ' + value } }))
+        .then(async (response) => {
+          if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Foto belum bisa dimuat.');
+          objectUrl = URL.createObjectURL(await response.blob());
+          if (live) setSrc(objectUrl);
+        }).catch((error: Error) => { if (live) setProblem(error.message); });
+    }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setRequest(null); };
+    window.addEventListener('keydown', key);
+    return () => { live = false; window.removeEventListener('keydown', key); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [request]);
+  if (!request) return null;
+  return <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={request.alt} onClick={() => setRequest(null)}>
+    <button className="photo-viewer-close" aria-label="Tutup foto" onClick={() => setRequest(null)}><i className="fas fa-xmark" aria-hidden="true" /></button>
+    <figure onClick={(event) => event.stopPropagation()}>
+      {problem ? <p className="notice" role="alert">{problem}</p>
+        : src ? <img src={src} alt={request.alt} referrerPolicy="no-referrer" />
+        : <p className="photo-viewer-loading" role="status">Memuat foto…</p>}
+      {(request.caption || request.alt) && <figcaption>{request.caption ?? request.alt}</figcaption>}
+    </figure>
+  </div>;
 }

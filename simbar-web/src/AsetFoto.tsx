@@ -6,9 +6,10 @@ import { rpc } from './supabase';
 export type Contoh = { foto: string; kode: string } | null;
 
 export function AssetThumb({ photo, contoh, name, size = 48 }: { photo?: string | null; contoh?: Contoh; name: string; size?: number }) {
-  if (photo) return <PrivateThumb reference={photo} alt={'Foto ' + name} size={96} display={size} />;
+  if (photo) return <PrivateThumb reference={photo} alt={'Foto ' + name} size={96} display={size} caption={name} />;
   if (contoh) return <span className="contoh-wrap" title={'Foto contoh dari ' + contoh.kode}>
-    <PrivateThumb reference={contoh.foto} alt={'Foto contoh ' + name} size={96} display={size} className="contoh" />
+    <PrivateThumb reference={contoh.foto} alt={'Foto contoh ' + name} size={96} display={size} className="contoh"
+      caption={`${name} · foto contoh dari ${contoh.kode}`} />
     <span className="contoh-badge">Contoh</span></span>;
   return <span className="item-thumb empty" style={{ width: size, height: size }} title="Belum difoto" aria-label="Belum difoto"><i className="fas fa-camera" /></span>;
 }
@@ -42,8 +43,9 @@ export function AssetPhotoPanel({ asetId, name, photo, contoh, takenAt, takenBy,
 
   return <div className="asset-photo-panel wide">
     <div className="asset-photo-frame">
-      {photo ? <PrivateThumb reference={photo} alt={'Foto ' + name} size={640} display={240} className="asset-photo-big" />
-        : contoh ? <span className="contoh-wrap big"><PrivateThumb reference={contoh.foto} alt={'Foto contoh ' + name} size={640} display={240} className="asset-photo-big contoh" />
+      {photo ? <PrivateThumb reference={photo} alt={'Foto ' + name} size={640} display={240} className="asset-photo-big" caption={name} />
+        : contoh ? <span className="contoh-wrap big"><PrivateThumb reference={contoh.foto} alt={'Foto contoh ' + name} size={640} display={240} className="asset-photo-big contoh"
+          caption={`${name} · foto contoh dari ${contoh.kode}`} />
           <span className="contoh-badge">Contoh</span></span>
         : <span className="item-thumb empty asset-photo-big" style={{ width: 240, height: 240 }}><i className="fas fa-camera" /></span>}
     </div>

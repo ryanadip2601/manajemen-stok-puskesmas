@@ -10,6 +10,7 @@ import { Verifikasi } from './Verifikasi';
 import { Pengajuan } from './Pengajuan';
 import { RapikanBarang } from './Rapikan';
 import { FotoAsliPanel } from './FotoBarang';
+import { PhotoViewer } from './media';
 import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
@@ -321,6 +322,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   }
 
   return <div className={'app' + (mini ? ' mini' : '') + (drawer ? ' drawer-open' : '')}>
+    <PhotoViewer />
     <aside className="sidebar">
       <div className="side-brand">
         <span className="logo-tile" aria-hidden="true"><LogoMark /></span>

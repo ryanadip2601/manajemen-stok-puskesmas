@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ItemThumb, isRealPhoto, photoSourceLabel, photoThumb, uploadItemPhoto } from './media';
+import { ItemThumb, isRealPhoto, photoSourceLabel, photoThumb, uploadItemPhoto, zoomProps } from './media';
 import { rpc } from './supabase';
 
 // Foto barang: change one barang's photo (Ubah barang), and a panel to replace temporary photos with real ones, step by step.
@@ -35,7 +35,8 @@ export function ItemPhotoEditor({ itemId, name, photo, source, onChange }: {
   return <fieldset className="wide choice photo-field item-photo-editor">
     <legend>Foto barang</legend>
     <div className="item-photo-row">
-      {photo ? <img className="item-photo-large" src={photoThumb(photo, 480)} alt={'Foto ' + name} referrerPolicy="no-referrer" />
+      {photo ? <img className="item-photo-large zoomable" src={photoThumb(photo, 480)} alt={'Foto ' + name} referrerPolicy="no-referrer"
+        {...zoomProps({ url: photo, alt: 'Foto ' + name, caption: name + ' · ' + photoSourceLabel(source) })} />
         : <span className="item-thumb empty" style={{ width: 120, height: 120 }}><i className="fas fa-box" /></span>}
       <div>
         <p className={'item-photo-source' + (isRealPhoto(source) ? ' real' : '')}>{photoSourceLabel(source)}</p>
