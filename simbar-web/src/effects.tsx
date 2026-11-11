@@ -295,19 +295,20 @@ class Ambient {
     reverb.buffer = this.room(2.6);
     const wet = this.ctx.createGain();
     wet.gain.value = .4;
-    // A light safety limiter that only touches rare peaks; the mix is levelled so it rarely has to.
+    // Level first, then a fast limiter as the very last stage, so chance pile-ups of notes can never pass 1.0.
+    // It only touches rare peaks (threshold near the top), so the music itself is not squashed or bent.
+    const level = this.ctx.createGain();
+    level.gain.value = 1.7;
     const limiter = this.ctx.createDynamicsCompressor();
-    limiter.threshold.value = -6;
-    limiter.knee.value = 6;
-    limiter.ratio.value = 4;
-    limiter.attack.value = .02;
-    limiter.release.value = .5;
-    const out = this.ctx.createGain();
-    out.gain.value = 1.9;
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = .001;
+    limiter.release.value = .25;
 
     this.tone.connect(this.master);
     this.tone.connect(reverb).connect(wet).connect(this.master);
-    this.master.connect(limiter).connect(out).connect(this.ctx.destination);
+    this.master.connect(level).connect(limiter).connect(this.ctx.destination);
   }
 
   // Call straight from a tap or click: Safari only unlocks sound inside the gesture itself.
@@ -364,7 +365,7 @@ class Ambient {
     const { chords, root, scale, gap } = this.mood;
     const length = (gap[0] + Math.random() * (gap[1] - gap[0])) / 1000;
     const start = this.ctx.currentTime + LOOKAHEAD;
-    this.pad(chords[this.chord % chords.length].map((note) => hz(root, note)), start, length * 1.35);
+    this.pad(chords[this.chord % chords.length].map((note) => hz(root, note)), start, length * 1.2);
     this.chord++;
     const notes = 1 + Math.floor(Math.random() * 2);
     for (let i = 0; i < notes; i++) {
