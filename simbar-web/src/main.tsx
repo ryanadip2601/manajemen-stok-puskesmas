@@ -10,7 +10,7 @@ import { Penyusutan } from './Penyusutan';
 import { AdminPermintaan, MyPermintaan, RestockNotices } from './Permintaan';
 import { Checklist, MyPickups } from './Pickup';
 import { AdminUsulan, MyUsulan } from './Usulan';
-import { Catalog, Movements } from './Stock';
+import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
 import { Users } from './Users';
@@ -61,7 +61,7 @@ function useTheme() {
   return [theme, () => setTheme(theme === 'dark' ? 'light' : 'dark')] as const;
 }
 
-type Section = 'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
+type Section = 'summary' | InventoryKind | 'catalog' | 'mutasi' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
 type MenuItem = { id: Section; label: string; icon: string; color: string };
 type MenuGroup = { title: string; items: MenuItem[] };
 
@@ -70,13 +70,14 @@ function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup
   return MENU_GROUPS.map((group) => ({
     title: group.title,
     items: group.items.filter((item) => !item.right && (role === 'admin' || item.share === 'always'
+      || (item.share === 'parent' && (item.rights ?? []).some((id) => shared[role].includes(id)))
       || (item.share === 'yes' && (shared[role].includes(item.id) || (item.id === 'items' && shared[role].includes('catalog'))))))
       .map(({ id, label, icon, color }) => ({ id, label, icon, color })),
   })).filter((group) => group.items.length);
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
-const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
+const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'mutasi', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
   'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'menus', 'profil'];
 function linkedSection(search: string) {
   const wanted = new URLSearchParams(search).get('menu');
@@ -278,14 +279,15 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
     ? groups.map((group) => ({ ...group, items: group.items.filter((item) => (item.label + ' ' + group.title).toLowerCase().includes(needle)) }))
       .filter((group) => group.items.length)
     : groups;
-  const isOpen = (group: MenuGroup) => !!needle || !folded.includes(group.title) || group.items.some((item) => item.id === section);
+  const isOpen = (group: MenuGroup) => !!needle || !folded.includes(group.title) || group.items.some((item) => item.id === shownSection);
   const toggleGroup = (title: string) => setFolded(folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title]);
+  const shownSection: Section = section === 'in' || section === 'out' ? 'mutasi' : section === 'catalog' ? 'items' : section;
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
-    : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === section)
+    : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === shownSection)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
   // A link to a page this role cannot open falls back to the dashboard.
   useEffect(() => {
-    if (groups.length && section !== 'profil' && !groups.some((group) => group.items.some((item) => item.id === section))) setSection('summary');
+    if (groups.length && section !== 'profil' && !groups.some((group) => group.items.some((item) => item.id === shownSection))) setSection('summary');
   }, [groups.length, section]);
 
   function go(next: Section) {
@@ -337,7 +339,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
               {!isOpen(group) && <span className="side-count">{group.items.length}</span>}
               <i className="fas fa-chevron-down" aria-hidden="true" /></button>}</p>
           {isOpen(group) && group.items.map((item) =>
-            <button key={item.id} className={'side-link c-' + item.color} aria-current={section === item.id ? 'page' : undefined}
+            <button key={item.id} className={'side-link c-' + item.color} aria-current={shownSection === item.id ? 'page' : undefined}
               title={mini ? item.label : undefined} onClick={() => go(item.id)}>
               <span className="side-icon" aria-hidden="true"><i className={'fas ' + item.icon} /></span>
               <span className="side-label">{item.label}</span>
@@ -387,7 +389,9 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
       : section === 'usulan' ? <MyUsulan canExport={warehouse} />
       : section === 'usulan-admin' ? <AdminUsulan />
       : section === 'checklist' ? <Checklist />
-      : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
+      : section === 'mutasi' || section === 'in' || section === 'out'
+        ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section}
+            allowed={(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
       : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))
         ? <Catalog list={(edit, version, add) => <Inventory kind="items" session={session} request={api} onEdit={edit} version={version} actions={add} />} />
         : <Inventory key={section} kind={section} session={session} request={api} />)

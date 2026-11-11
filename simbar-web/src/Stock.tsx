@@ -275,3 +275,19 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
       </>}
   </section>;
 }
+
+// Mutasi Barang: barang masuk and barang keluar on one page, one tab per right the role has.
+export function Mutasi({ allowed, initial }: { allowed: ('in' | 'out')[]; initial?: 'in' | 'out' }) {
+  const [tab, setTab] = useState<'in' | 'out'>(initial && allowed.includes(initial) ? initial : allowed[0] ?? 'in');
+  const shown = allowed.includes(tab) ? tab : allowed[0];
+  if (!shown) return <section className="panel"><h2>Mutasi barang</h2><p role="status">Tidak ada akses mutasi untuk peran ini.</p></section>;
+  return <>
+    {allowed.length > 1 && <div className="mutasi-tabs" role="group" aria-label="Jenis mutasi">
+      <button className="secondary" aria-pressed={shown === 'in'} onClick={() => setTab('in')}>
+        <i className="fas fa-arrow-down" aria-hidden="true" /> Masuk</button>
+      <button className="secondary" aria-pressed={shown === 'out'} onClick={() => setTab('out')}>
+        <i className="fas fa-arrow-up" aria-hidden="true" /> Keluar</button>
+    </div>}
+    <Movements key={shown} kind={shown} />
+  </>;
+}

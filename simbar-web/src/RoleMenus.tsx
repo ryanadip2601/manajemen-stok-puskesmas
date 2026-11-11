@@ -3,10 +3,12 @@ import { rpc } from './supabase';
 
 // Every menu in sidebar order. `share` marks the ones the administrator can hand to Admin Gudang and Staf;
 // Dashboard is always shown, Pengguna and Atur Menu stay with the administrator.
-export type MenuId = 'summary' | 'items' | 'catalog' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
+export type MenuId = 'summary' | 'items' | 'catalog' | 'mutasi' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
   | 'aset' | 'pemeliharaan' | 'penyusutan' | 'pickup' | 'permintaan' | 'usulan' | 'laporan' | 'users' | 'menus';
 // `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
-export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin'; hint: string; right?: boolean };
+export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin' | 'parent'; hint: string; right?: boolean;
+  // `parent` menus have no setting of their own: they appear when the role has one of these rights.
+  rights?: MenuId[] };
 export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
   { title: 'Menu Utama', items: [
     { id: 'summary', label: 'Dashboard', icon: 'fa-house', color: 'blue', share: 'always', hint: 'Ringkasan stok, aset dan pengajuan.' },
@@ -15,8 +17,10 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
       hint: 'Di Data Barang: menambah, mengubah dan menghapus barang serta jenis barang.' },
   ] },
   { title: 'Transaksi Gudang', items: [
-    { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', hint: 'Mencatat barang masuk; stok bertambah.' },
-    { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', hint: 'Mencatat barang keluar; stok berkurang.' },
+    { id: 'mutasi', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
+      hint: 'Barang masuk dan keluar dalam satu halaman; tampil jika salah satu hak di bawah dicentang.' },
+    { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', right: true, hint: 'Tab Masuk: mencatat barang masuk; stok bertambah.' },
+    { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', right: true, hint: 'Tab Keluar: mencatat barang keluar; stok berkurang.' },
     { id: 'checklist', label: 'Checklist Pengambilan', icon: 'fa-clipboard-check', color: 'pink', share: 'yes', hint: 'Menyetujui pengambilan; stok langsung berkurang.' },
   ] },
   { title: 'Verifikasi', items: [
@@ -93,6 +97,8 @@ export function RoleMenusPage({ saved, onSaved }: { saved: RoleMenus; onSaved: (
                 ? <input type="checkbox" checked={draft[role.id].includes(item.id)} onChange={() => toggle(role.id, item.id)}
                     aria-label={`${item.label} untuk ${role.label}`} />
                 : item.share === 'always' ? <i className="fas fa-check role-menus-fixed" aria-label="Selalu" />
+                : item.share === 'parent' ? (item.rights ?? []).some((id) => draft[role.id].includes(id))
+                  ? <i className="fas fa-check role-menus-auto" aria-label="Tampil" /> : <span className="role-menus-auto" aria-label="Tidak tampil">—</span>
                 : <span className="role-menus-locked" title="Khusus Administrator"><i className="fas fa-lock" aria-hidden="true" /><span className="sr-only">Khusus Administrator</span></span>}
             </td>)}
           </tr>)}
