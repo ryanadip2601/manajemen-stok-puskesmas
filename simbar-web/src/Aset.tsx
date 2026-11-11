@@ -50,24 +50,26 @@ function useOptions(version: number) {
   return options;
 }
 
-export function Assets({ warehouse }: { warehouse: boolean }) {
-  const [tab, setTab] = useState<'list' | 'rooms' | 'categories'>('list');
+// `section` shows one part without the inner tab bar (the Aset menu has its own tabs); `onReport` adds "Laporkan rusak".
+export function Assets({ warehouse, section, onReport }: { warehouse: boolean; section?: 'list' | 'rooms' | 'categories'; onReport?: (asetId: number) => void }) {
+  const [chosen, setTab] = useState<'list' | 'rooms' | 'categories'>('list');
+  const tab = section ?? chosen;
   const [version, setVersion] = useState(0);
   const options = useOptions(version);
   const refresh = () => setVersion((value) => value + 1);
   return <>
-    {warehouse && <div className="filters" role="group" aria-label="Bagian aset">
+    {warehouse && !section && <div className="filters" role="group" aria-label="Bagian aset">
       {([['list', 'Barang aset'], ['rooms', 'Ruangan'], ['categories', 'Kategori aset']] as const).map(([value, label]) =>
         <button key={value} className="secondary" aria-pressed={tab === value} onClick={() => setTab(value)}>{label}</button>)}
     </div>}
     {!options ? <p role="status">Memuat data aset…</p>
       : tab === 'rooms' ? <Rooms options={options} refresh={refresh} />
       : tab === 'categories' ? <Categories options={options} refresh={refresh} />
-      : <AssetList options={options} warehouse={warehouse} refresh={refresh} />}
+      : <AssetList options={options} warehouse={warehouse} refresh={refresh} onReport={onReport} />}
   </>;
 }
 
-function AssetList({ options, warehouse, refresh }: { options: Options; warehouse: boolean; refresh: () => void }) {
+function AssetList({ options, warehouse, refresh, onReport }: { options: Options; warehouse: boolean; refresh: () => void; onReport?: (asetId: number) => void }) {
   const empty = { search: '', kategori: '', ruangan: '', kondisi: '', status: '', tahun: '', butuh_perbaikan: false };
   const [filters, setFilters] = useState(empty);
   const [page, setPage] = useState(1);
@@ -148,6 +150,7 @@ function AssetList({ options, warehouse, refresh }: { options: Options; warehous
     <Message value={message} />
     {view?.mode === 'detail' && <AssetDetail detail={view.detail} warehouse={warehouse} busy={busy}
       onEdit={() => setView({ mode: 'edit', detail: view.detail })} onClose={() => setView(null)}
+      onReport={onReport ? () => onReport(view.detail.id) : undefined}
       onDelete={() => { if (confirm(`Hapus aset ${view.detail.nama_aset}? Riwayat pemeliharaannya ikut terhapus.`)) {
         run(() => rpc('simbar_aset_delete', { aset_ids: [view.detail.id] }), () => 'Barang aset berhasil dihapus.');
       } }} />}
@@ -221,8 +224,8 @@ function AssetList({ options, warehouse, refresh }: { options: Options; warehous
   </section>;
 }
 
-function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose }: {
-  detail: Detail; warehouse: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onClose: () => void;
+function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onReport }: {
+  detail: Detail; warehouse: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onClose: () => void; onReport?: () => void;
 }) {
   const fields: [string, React.ReactNode][] = [
     ['Kode aset', detail.kode_aset], ['Kategori', `${detail.kategori} · ${golonganLabels[String(detail.golongan)] ?? detail.golongan}`],
@@ -248,6 +251,7 @@ function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose }: {
       </ul> : 'Belum ada.'}</dd></div>
     </dl>
     <div className="form-actions wide">
+      {onReport && <button className="primary" onClick={onReport}><i className="fas fa-screwdriver-wrench" aria-hidden="true" /> Laporkan rusak</button>}
       {warehouse && <button className="primary" onClick={onEdit}>Ubah</button>}
       {warehouse && <button className="danger" disabled={busy} onClick={onDelete}>Hapus aset</button>}
       <button className="secondary" onClick={onClose}>Tutup</button>

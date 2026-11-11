@@ -33,14 +33,16 @@ function Message({ value }: { value: { text: string; ok: boolean } }) {
 }
 
 // Opened from Verifikasi: `openId` opens one report, `onBack` returns to the queue.
-export function Pemeliharaan({ warehouse, openId, onBack }: { warehouse: boolean; openId?: number; onBack?: () => void }) {
+export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLabel = 'Kembali ke antrean' }: {
+  warehouse: boolean; openId?: number; onBack?: () => void; start?: boolean; preset?: number; backLabel?: string;
+}) {
   const empty = { search: '', ruangan: '', status: '', jenis: '', teknisi: '', dari: '', sampai: '' };
   const [options, setOptions] = useState<Options | null>(null);
   const [filters, setFilters] = useState(empty);
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<{ data?: Page; error?: string }>({});
-  const [view, setView] = useState<{ mode: 'detail' | 'edit'; detail: Detail } | { mode: 'new' } | null>(null);
+  const [view, setView] = useState<{ mode: 'detail' | 'edit'; detail: Detail } | { mode: 'new' } | null>(start ? { mode: 'new' } : null);
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
 
@@ -114,7 +116,7 @@ export function Pemeliharaan({ warehouse, openId, onBack }: { warehouse: boolean
   const last = Math.max(1, Math.ceil(total / perPage));
 
   return <section className="panel">
-    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Kembali ke antrean</button>}
+    {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> {backLabel}</button>}
     <div className="panel-head">
       <h2>Pemeliharaan aset</h2>
       {!view && <button className="primary" disabled={!options} onClick={() => { setMessage({ text: '', ok: true }); setView({ mode: 'new' }); }}>Laporkan pemeliharaan</button>}
@@ -157,7 +159,7 @@ export function Pemeliharaan({ warehouse, openId, onBack }: { warehouse: boolean
         <button className="secondary" onClick={() => setView(null)}>Tutup</button>
       </div>
     </div>}
-    {view && view.mode !== 'detail' && options && <PemeliharaanForm options={options} detail={view.mode === 'edit' ? view.detail : null} busy={busy}
+    {view && view.mode !== 'detail' && options && <PemeliharaanForm options={options} detail={view.mode === 'edit' ? view.detail : null} busy={busy} preset={preset}
       onCancel={() => setView(null)} onSubmit={(form) => run(() => rpc('simbar_pemeliharaan_save', {
         pemeliharaan_id: view.mode === 'edit' ? view.detail.id : null, form,
       }), view.mode === 'edit' ? 'Laporan pemeliharaan berhasil diupdate.' : 'Laporan pemeliharaan berhasil dibuat.')} />}
@@ -201,10 +203,11 @@ export function Pemeliharaan({ warehouse, openId, onBack }: { warehouse: boolean
   </section>;
 }
 
-function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel }: {
-  options: Options; detail: Detail | null; busy: boolean; onSubmit: (form: Record<string, unknown>) => void; onCancel: () => void;
+function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel, preset }: {
+  options: Options; detail: Detail | null; busy: boolean; onSubmit: (form: Record<string, unknown>) => void; onCancel: () => void; preset?: number;
 }) {
-  const [room, setRoom] = useState(detail ? String(detail.ruangan_id) : '');
+  const presetAset = !detail && preset ? options.assets.find((asset) => asset.id === preset) : undefined;
+  const [room, setRoom] = useState(detail ? String(detail.ruangan_id) : presetAset ? String(presetAset.roomId) : '');
   const [photo, setPhoto] = useState<string | null>(detail?.lampiran_foto ?? null);
   const assets = options.assets.filter((asset) => String(asset.roomId) === room || asset.id === detail?.barang_aset_id);
 
@@ -224,7 +227,7 @@ function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel }: {
     <label>Ruangan<select required value={room} onChange={(event) => setRoom(event.target.value)}>
       <option value="" disabled>Pilih ruangan</option>{options.rooms.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
     </select></label>
-    <label>Barang aset<select name="aset" required defaultValue={detail?.barang_aset_id ?? ''} key={room}>
+    <label>Barang aset<select name="aset" required defaultValue={detail?.barang_aset_id ?? (presetAset && String(presetAset.roomId) === room ? presetAset.id : '')} key={room}>
       <option value="" disabled>{room ? (assets.length ? 'Pilih aset' : 'Tidak ada aset di ruangan ini') : 'Pilih ruangan dulu'}</option>
       {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} ({asset.code}) — {kondisiLabels[asset.kondisi]}</option>)}
     </select></label>

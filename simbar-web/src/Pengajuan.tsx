@@ -3,13 +3,14 @@ import { rpc } from './supabase';
 import { MyPickups } from './Pickup';
 import { MyPermintaan } from './Permintaan';
 import { MyUsulan } from './Usulan';
+import { Pemeliharaan } from './Pemeliharaan';
 
 // Pengajuan: one place for everything a person asks of the warehouse. "Buat pengajuan" asks what they need
 // (ambil, minta, lapor aset) instead of making them pick a menu; the list below shows all their requests together.
-export type RequestKind = 'pickup' | 'permintaan' | 'usulan';
+export type RequestKind = 'pickup' | 'permintaan' | 'usulan' | 'pemeliharaan';
 type Bucket = 'all' | 'menunggu' | 'revisi' | 'disetujui' | 'ditolak' | 'dibatalkan';
 type Row = {
-  kind: RequestKind; id: number; code: string | null; title: string; jumlah: number; satuan: string | null;
+  kind: RequestKind; id: number; code: string | null; title: string; jumlah: number | null; satuan: string | null;
   tanggal: string; status: string; bucket: Exclude<Bucket, 'all'>; note: string | null;
 };
 type Page = { kinds: RequestKind[]; counts: Record<Bucket, number>; total: number; rows: Row[] };
@@ -22,16 +23,20 @@ export const REQUEST_KINDS: Record<RequestKind, { title: string; short: string; 
     when: 'Stok habis atau menipis, atau barangnya belum pernah ada di gudang.' },
   usulan: { title: 'Laporkan barang baru di ruangan', short: 'Usulan aset', icon: 'fa-file-signature', color: 'blue',
     when: 'Ruangan menerima barang baru, seperti meja, komputer atau alat medis, yang perlu dicatat sebagai aset.' },
+  pemeliharaan: { title: 'Laporkan aset rusak', short: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple',
+    when: 'Aset di ruangan rusak atau perlu diperbaiki. Gudang menindaklanjuti dan memperbarui statusnya.' },
 };
-const ORDER: RequestKind[] = ['pickup', 'permintaan', 'usulan'];
+const ORDER: RequestKind[] = ['pickup', 'permintaan', 'usulan', 'pemeliharaan'];
 const BUCKETS: [Bucket, string][] = [['all', 'Semua'], ['menunggu', 'Menunggu'], ['revisi', 'Perlu revisi'],
-  ['disetujui', 'Disetujui'], ['ditolak', 'Ditolak'], ['dibatalkan', 'Dibatalkan']];
+  ['disetujui', 'Disetujui / selesai'], ['ditolak', 'Ditolak'], ['dibatalkan', 'Dibatalkan']];
 const STATUS: Record<RequestKind, Record<string, string>> = {
   pickup: { pending: 'Menunggu', approved: 'Disetujui', completed: 'Selesai', rejected: 'Ditolak', cancelled: 'Dibatalkan' },
   permintaan: { pending: 'Menunggu verifikasi', diproses: 'Sedang diproses', disetujui: 'Disetujui', ditolak: 'Ditolak',
     revisi: 'Perlu revisi', tersedia: 'Barang tersedia', dibaca: 'Sudah dibaca' },
   usulan: { pending: 'Menunggu verifikasi', diproses: 'Sedang diproses', disetujui: 'Disetujui', ditolak: 'Ditolak', revisi: 'Perlu revisi' },
+  pemeliharaan: { menunggu: 'Menunggu', proses: 'Diproses', selesai: 'Selesai', rusak: 'Rusak (tidak dapat diperbaiki)' },
 };
+const BADGE_CLASS: Record<string, string> = { menunggu: 'pending', proses: 'diproses', selesai: 'completed', rusak: 'rejected' };
 const perPage = 15;
 const number = new Intl.NumberFormat('id-ID');
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
@@ -47,7 +52,8 @@ export function Pengajuan({ allowed, initial, canExport }: { allowed: RequestKin
     const { kind, start, openId } = view;
     return kind === 'pickup' ? <MyPickups key={'p' + String(start)} start={start} onBack={back} />
       : kind === 'permintaan' ? <MyPermintaan key={'m' + String(start) + openId} start={start} openId={openId} onBack={back} />
-      : <MyUsulan key={'u' + String(start) + openId} canExport={canExport} start={start} openId={openId} onBack={back} />;
+      : kind === 'usulan' ? <MyUsulan key={'u' + String(start) + openId} canExport={canExport} start={start} openId={openId} onBack={back} />
+      : <Pemeliharaan key={'r' + String(start) + openId} warehouse={canExport} start={start} openId={openId} onBack={back} backLabel="Semua pengajuan" />;
   }
   if (view.mode === 'choose') return <section className="panel">
     <div className="panel-head">
@@ -129,9 +135,9 @@ function RequestList({ kinds, version, create, open }: {
               <th scope="row"><strong>{row.title}</strong>{row.code && <span>{row.code}</span>}</th>
               <td><span className={'request-kind c-' + REQUEST_KINDS[row.kind].color}>
                 <i className={'fas ' + REQUEST_KINDS[row.kind].icon} aria-hidden="true" /> {REQUEST_KINDS[row.kind].short}</span></td>
-              <td>{number.format(row.jumlah)}{row.satuan && ' ' + row.satuan}</td>
+              <td>{row.jumlah === null ? '—' : number.format(row.jumlah) + (row.satuan ? ' ' + row.satuan : '')}</td>
               <td>{dateFormat.format(new Date(row.tanggal.slice(0, 10)))}</td>
-              <td><span className={'badge ' + row.status}>{STATUS[row.kind][row.status] ?? row.status}</span>
+              <td><span className={'badge ' + (row.kind === 'pemeliharaan' ? BADGE_CLASS[row.status] ?? '' : row.status)}>{STATUS[row.kind][row.status] ?? row.status}</span>
                 {row.note && (row.bucket === 'revisi' || row.bucket === 'ditolak') && <small className="request-note">{row.note}</small>}</td>
               <td><button className={row.bucket === 'revisi' ? 'primary' : 'secondary'} onClick={() => open(row)}>
                 {row.bucket === 'revisi' ? 'Perbaiki' : row.kind === 'pickup' ? 'Buka' : 'Detail'}</button></td>

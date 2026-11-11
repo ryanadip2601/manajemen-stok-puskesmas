@@ -2,11 +2,9 @@ import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
-import { Assets } from './Aset';
-import { Pemeliharaan } from './Pemeliharaan';
+import { AsetMenu, type AsetTab } from './AsetMenu';
 import { Laporan } from './Laporan';
 import { Overview } from './Overview';
-import { Penyusutan } from './Penyusutan';
 import { RestockNotices } from './Permintaan';
 import { Verifikasi } from './Verifikasi';
 import { Pengajuan } from './Pengajuan';
@@ -61,7 +59,7 @@ function useTheme() {
   return [theme, () => setTheme(theme === 'dark' ? 'light' : 'dark')] as const;
 }
 
-type Section = 'summary' | InventoryKind | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
+type Section = 'summary' | InventoryKind | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'aset-menu' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
 type MenuItem = { id: Section; label: string; icon: string; color: string; desc?: string };
 type MenuGroup = { title: string; items: MenuItem[] };
 
@@ -77,7 +75,7 @@ function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
-const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'pengajuan', 'mutasi', 'antrean', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
+const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'pengajuan', 'mutasi', 'antrean', 'aset-menu', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
   'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'menus', 'profil'];
 function linkedSection(search: string) {
   const wanted = new URLSearchParams(search).get('menu');
@@ -294,7 +292,8 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   const toggleGroup = (title: string) => setFolded(folded.includes(title) ? folded.filter((t) => t !== title) : [...folded, title]);
   const shownSection: Section = section === 'in' || section === 'out' ? 'mutasi' : section === 'catalog' ? 'items'
     : section === 'pickup' || section === 'permintaan' || section === 'usulan' ? 'pengajuan'
-    : section === 'checklist' || section === 'verifikasi' || section === 'usulan-admin' ? 'antrean' : section;
+    : section === 'checklist' || section === 'verifikasi' || section === 'usulan-admin' ? 'antrean'
+    : section === 'aset' || section === 'pemeliharaan' || section === 'penyusutan' ? 'aset-menu' : section;
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
     : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === shownSection)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
@@ -394,16 +393,18 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
         </section> : !state.summary ? <p role="status">Memuat ringkasan SIMBAR…</p> : <>
     <RestockNotices />
     <div className="page" key={section}>
-    {section === 'aset' ? <Assets warehouse={warehouse} />
+    {section === 'aset-menu' || section === 'aset' || section === 'pemeliharaan' || section === 'penyusutan'
+      ? <AsetMenu key={section} warehouse={warehouse} initial={section === 'aset-menu' || section === 'aset' ? undefined : section}
+          allowed={([['list', 'aset'], ['pemeliharaan', 'pemeliharaan'], ['penyusutan', 'penyusutan']] as const)
+            .filter(([, right]) => role === 'admin' || (!!role && roleMenus[role].includes(right))).map(([tab]) => tab as AsetTab)
+            .concat(warehouse ? ['rooms', 'categories'] : [])} />
       : section === 'laporan' ? <Laporan />
       : section === 'users' ? <Users selfId={selfId} />
       : section === 'menus' ? <RoleMenusPage saved={roleMenus} onSaved={setRoleMenus} />
       : section === 'profil' ? <><ProfilePage /><DeviceApp /></>
-      : section === 'penyusutan' ? <Penyusutan />
-      : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />
       : section === 'pengajuan' || section === 'pickup' || section === 'permintaan' || section === 'usulan'
         ? <Pengajuan key={section} canExport={warehouse} initial={section === 'pengajuan' ? undefined : section}
-            allowed={(['pickup', 'permintaan', 'usulan'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
+            allowed={(['pickup', 'permintaan', 'usulan', 'pemeliharaan'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
       : section === 'antrean' || section === 'checklist' || section === 'verifikasi' || section === 'usulan-admin'
         ? <Verifikasi key={section} onChange={refreshWaiting}
             initial={section === 'checklist' ? 'pickup' : section === 'verifikasi' ? 'permintaan' : section === 'usulan-admin' ? 'usulan' : undefined} />

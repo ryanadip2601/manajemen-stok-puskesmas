@@ -1,5 +1,5 @@
--- "Pengajuan saya": one list of the caller's own pengambilan, permintaan and usulan, for the Pengajuan page.
--- Only the kinds the caller's role may use (Atur Menu rights pickup / permintaan / usulan) are listed.
+-- "Pengajuan saya": one list of the caller's own pengambilan, permintaan, usulan and laporan pemeliharaan, for the Pengajuan page.
+-- Only the kinds the caller's role may use (Atur Menu rights pickup / permintaan / usulan / pemeliharaan) are listed.
 -- Every status is also put in one of five buckets so the page can filter across kinds. Safe to re-run.
 
 BEGIN;
@@ -15,12 +15,12 @@ DECLARE
     pattern text;
     result jsonb;
 BEGIN
-    IF kind_filter IS NULL OR kind_filter NOT IN ('all', 'pickup', 'permintaan', 'usulan') OR
+    IF kind_filter IS NULL OR kind_filter NOT IN ('all', 'pickup', 'permintaan', 'usulan', 'pemeliharaan') OR
        bucket_filter IS NULL OR bucket_filter NOT IN ('all', 'menunggu', 'revisi', 'disetujui', 'ditolak', 'dibatalkan') OR
        search_text IS NULL OR char_length(search_text) > 100 OR page_number IS NULL OR page_number NOT BETWEEN 1 AND 10000 THEN
         RAISE invalid_parameter_value USING MESSAGE = 'Filter pengajuan tidak valid.';
     END IF;
-    kinds := ARRAY(SELECT k FROM unnest(ARRAY['pickup', 'permintaan', 'usulan']) AS k WHERE simbar.has_menu(actor.role, ARRAY[k]));
+    kinds := ARRAY(SELECT k FROM unnest(ARRAY['pickup', 'permintaan', 'usulan', 'pemeliharaan']) AS k WHERE simbar.has_menu(actor.role, ARRAY[k]));
     pattern := '%' || replace(replace(replace(btrim(search_text), '!', '!!'), '%', '!%'), '_', '!_') || '%';
 
     WITH mine AS MATERIALIZED (
@@ -50,6 +50,13 @@ BEGIN
                s.created_at
         FROM simbar.usulan_penerimaan_barang s
         WHERE s.user_id = actor.id
+        UNION ALL
+        SELECT 'pemeliharaan', m.id, a.kode_aset::text, a.nama_aset::text, NULL::integer, NULL::text, m.tanggal_pemeliharaan, m.status::text,
+               CASE WHEN m.status IN ('menunggu', 'proses') THEN 'menunggu' ELSE 'disetujui' END,
+               coalesce(m.tindakan_perbaikan, m.deskripsi_masalah), m.created_at
+        FROM simbar.pemeliharaan_aset m
+        JOIN simbar.barang_aset a ON a.id = m.barang_aset_id
+        WHERE m.created_by = actor.id
     ), filtered AS MATERIALIZED (
         SELECT * FROM mine
         WHERE kind = ANY (kinds) AND (kind_filter = 'all' OR kind = kind_filter)

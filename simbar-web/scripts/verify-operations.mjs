@@ -437,11 +437,11 @@ try {
   // Pengajuan saya: one list of the caller's own requests across the three kinds, with buckets.
   await as(STAFF);
   const mineAll = (await one(`SELECT public.simbar_my_requests('all', 'all', '', 1) AS r`)).r;
-  assert.deepEqual(mineAll.kinds, ['pickup', 'permintaan', 'usulan']);
+  assert.deepEqual(mineAll.kinds, ['pickup', 'permintaan', 'usulan', 'pemeliharaan']);
   assert.ok(mineAll.total > 0 && mineAll.rows.length <= 15);
   const ownCount = (await one(`SELECT
       (SELECT count(*) FROM simbar.stock_out_requests WHERE user_id = $1) + (SELECT count(*) FROM simbar.permintaan_barang WHERE user_id = $1)
-      + (SELECT count(*) FROM simbar.usulan_penerimaan_barang WHERE user_id = $1) AS n`, [staffId])).n;
+      + (SELECT count(*) FROM simbar.usulan_penerimaan_barang WHERE user_id = $1) + (SELECT count(*) FROM simbar.pemeliharaan_aset WHERE created_by = $1) AS n`, [staffId])).n;
   assert.equal(Number(mineAll.total), Number(ownCount), 'every own request of every kind is listed');
   const buckets = ['menunggu', 'revisi', 'disetujui', 'ditolak', 'dibatalkan'];
   assert.equal(buckets.reduce((sum, b) => sum + Number(mineAll.counts[b]), 0), Number(mineAll.counts.all), 'every status lands in one bucket');
@@ -454,7 +454,7 @@ try {
   await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff.filter((m) => m !== 'usulan')]);
   await as(STAFF);
   const withoutUsulan = (await one(`SELECT public.simbar_my_requests('all', 'all', '', 1) AS r`)).r;
-  assert.deepEqual(withoutUsulan.kinds, ['pickup', 'permintaan']);
+  assert.deepEqual(withoutUsulan.kinds, ['pickup', 'permintaan', 'pemeliharaan']);
   assert.ok(withoutUsulan.rows.every((row) => row.kind !== 'usulan'), 'kinds without the right are hidden');
   await as(ADMIN);
   await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);

@@ -3,7 +3,7 @@ import { rpc } from './supabase';
 
 // Every menu in sidebar order. `share` marks the ones the administrator can hand to Admin Gudang and Staf;
 // Dashboard is always shown, Pengguna and Atur Menu stay with the administrator.
-export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
+export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'aset-menu' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
   | 'aset' | 'pemeliharaan' | 'penyusutan' | 'pickup' | 'permintaan' | 'usulan' | 'laporan' | 'users' | 'menus';
 // `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
 export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin' | 'parent'; hint: string; right?: boolean;
@@ -17,7 +17,7 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
     { id: 'items', desc: 'Daftar barang habis pakai dan stoknya', label: 'Data Barang', icon: 'fa-box', color: 'emerald', share: 'yes', hint: 'Melihat daftar barang dan stoknya.' },
     { id: 'catalog', label: 'Boleh ubah barang', icon: 'fa-pen-to-square', color: 'teal', share: 'yes', right: true,
       hint: 'Di Data Barang: menambah, mengubah dan menghapus barang serta jenis barang.' },
-    { id: 'pengajuan', desc: 'Ambil atau minta barang, lapor aset baru', label: 'Pengajuan', icon: 'fa-paper-plane', color: 'orange', share: 'parent', rights: ['pickup', 'permintaan', 'usulan'],
+    { id: 'pengajuan', desc: 'Ambil atau minta barang, lapor aset baru atau rusak', label: 'Pengajuan', icon: 'fa-paper-plane', color: 'orange', share: 'parent', rights: ['pickup', 'permintaan', 'usulan', 'pemeliharaan'],
       hint: 'Buat dan pantau pengajuan; tampil jika salah satu jenis di bawah dicentang.' },
     { id: 'pickup', label: 'Ambil barang dari gudang', icon: 'fa-hand-holding', color: 'orange', share: 'yes', right: true,
       hint: 'Pengambilan barang; stok berkurang setelah disetujui.' },
@@ -37,10 +37,13 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
     { id: 'verifikasi', label: 'Permintaan barang', icon: 'fa-hand-holding-medical', color: 'orange', share: 'yes', right: true, hint: 'Menyetujui permintaan; barang baru ikut dibuat.' },
     { id: 'usulan-admin', label: 'Usulan aset', icon: 'fa-file-import', color: 'teal', share: 'yes', right: true, hint: 'Menyetujui usulan; aset baru ikut dibuat.' },
   ] },
-  { title: 'Manajemen Aset', items: [
-    { id: 'aset', desc: 'Daftar aset per ruangan dan kondisinya', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },
-    { id: 'pemeliharaan', desc: 'Laporan kerusakan dan perbaikan aset', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple', share: 'yes', hint: 'Melaporkan aset rusak dan memantau perbaikannya.' },
-    { id: 'penyusutan', desc: 'Penurunan nilai aset per tahun', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber', share: 'yes', hint: 'Menghitung dan memproses penyusutan aset.' },
+  { title: 'Aset', items: [
+    { id: 'aset-menu', desc: 'Daftar aset, pemeliharaan dan penyusutan', label: 'Aset', icon: 'fa-building', color: 'cyan', share: 'parent',
+      rights: ['aset', 'pemeliharaan', 'penyusutan'], hint: 'Satu menu dengan tab; tampil jika salah satu hak di bawah dicentang. Ruangan dan kategori khusus Admin Gudang.' },
+    { id: 'aset', label: 'Daftar aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', right: true, hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },
+    { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple', share: 'yes', right: true,
+      hint: 'Lapor aset rusak (juga lewat Pengajuan) dan melihat riwayat perbaikan.' },
+    { id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber', share: 'yes', right: true, hint: 'Menghitung dan memproses penyusutan aset.' },
   ] },
   { title: 'Administrasi', items: [
     { id: 'laporan', desc: 'Rekap stok dan transaksi, ekspor CSV', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo', share: 'yes', hint: 'Laporan stok dan transaksi, termasuk ekspor CSV.' },
