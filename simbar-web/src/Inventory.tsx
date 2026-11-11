@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 
 export type InventoryKind = 'items' | 'assets';
@@ -19,6 +19,11 @@ type Props = {
   kind: InventoryKind;
   session: Session;
   request: (session: Session, signal: AbortSignal, query: Record<string, string>) => Promise<Response>;
+  // Data Barang for people who may change barang: an "Ubah" button per row, buttons beside the title,
+  // and a version number that reloads the list after a save.
+  onEdit?: (id: number) => void;
+  actions?: ReactNode;
+  version?: number;
 };
 
 const perPage = 15;
@@ -33,7 +38,7 @@ const labels: Record<string, string> = {
   dipindahkan: 'Dipindahkan',
 };
 
-export function Inventory({ kind, session, request }: Props) {
+export function Inventory({ kind, session, request, onEdit, actions, version = 0 }: Props) {
   const isItem = kind === 'items';
   const [draft, setDraft] = useState('');
   const [filter, setFilter] = useState({ term: '', page: 1 });
@@ -48,7 +53,7 @@ export function Inventory({ kind, session, request }: Props) {
         if (!controller.signal.aborted) setState({ error: error.message });
       });
     return () => controller.abort();
-  }, [session, kind, filter, request]);
+  }, [session, kind, filter, request, version]);
 
   function load(term: string, page: number) {
     setState({});
@@ -64,7 +69,7 @@ export function Inventory({ kind, session, request }: Props) {
   const lastPage = Math.max(1, Math.ceil(total / perPage));
 
   return <section className="panel">
-    <h2>{isItem ? 'Daftar barang' : 'Daftar aset'}</h2>
+    <div className="panel-head"><h2>{isItem ? 'Daftar barang' : 'Daftar aset'}</h2>{actions}</div>
     <form className="inventory-search" onSubmit={search} role="search">
       <label htmlFor="inventory-search">Cari {isItem ? 'barang' : 'aset'}</label>
       <div className="filters">
@@ -89,6 +94,7 @@ export function Inventory({ kind, session, request }: Props) {
             {isItem ? <th scope="col">Stok minimum</th> : <>
               <th scope="col">Ruangan</th><th scope="col">Kondisi</th><th scope="col">Status</th>
             </>}
+            {onEdit && <th scope="col"><span className="sr-only">Aksi</span></th>}
           </tr></thead>
           <tbody>{state.data.rows.map((row) => <tr key={row.id}>
             <th scope="row"><strong>{row.name}</strong><span>{row.code}</span></th>
@@ -97,6 +103,7 @@ export function Inventory({ kind, session, request }: Props) {
             {isItem ? <td>{row.minimum === null ? '—' : number.format(row.minimum)}</td> : <>
               <td>{row.room}</td><td>{row.condition && labels[row.condition]}</td><td>{row.status && labels[row.status]}</td>
             </>}
+            {onEdit && <td><button className="secondary" onClick={() => onEdit(row.id)} aria-label={'Ubah ' + row.name}>Ubah</button></td>}
           </tr>)}</tbody>
         </table>
       </div>

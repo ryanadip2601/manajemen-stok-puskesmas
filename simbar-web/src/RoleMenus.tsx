@@ -5,14 +5,16 @@ import { rpc } from './supabase';
 // Dashboard is always shown, Pengguna and Atur Menu stay with the administrator.
 export type MenuId = 'summary' | 'items' | 'catalog' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
   | 'aset' | 'pemeliharaan' | 'penyusutan' | 'pickup' | 'permintaan' | 'usulan' | 'laporan' | 'users' | 'menus';
-export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin'; hint: string };
+// `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
+export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin'; hint: string; right?: boolean };
 export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
   { title: 'Menu Utama', items: [
     { id: 'summary', label: 'Dashboard', icon: 'fa-house', color: 'blue', share: 'always', hint: 'Ringkasan stok, aset dan pengajuan.' },
     { id: 'items', label: 'Data Barang', icon: 'fa-box', color: 'emerald', share: 'yes', hint: 'Melihat daftar barang dan stoknya.' },
+    { id: 'catalog', label: 'Boleh ubah barang', icon: 'fa-pen-to-square', color: 'teal', share: 'yes', right: true,
+      hint: 'Di Data Barang: menambah, mengubah dan menghapus barang serta jenis barang.' },
   ] },
   { title: 'Transaksi Gudang', items: [
-    { id: 'catalog', label: 'Kelola Barang', icon: 'fa-boxes-stacked', color: 'teal', share: 'yes', hint: 'Menambah, mengubah dan menghapus barang serta jenis barang.' },
     { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', hint: 'Mencatat barang masuk; stok bertambah.' },
     { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', hint: 'Mencatat barang keluar; stok berkurang.' },
     { id: 'checklist', label: 'Checklist Pengambilan', icon: 'fa-clipboard-check', color: 'pink', share: 'yes', hint: 'Menyetujui pengambilan; stok langsung berkurang.' },
@@ -82,7 +84,7 @@ export function RoleMenusPage({ saved, onSaved }: { saved: RoleMenus; onSaved: (
           {ROLES.map((role) => <th scope="col" className="role-col" key={role.id}>{role.label}</th>)}</tr></thead>
         {MENU_GROUPS.map((group) => <tbody key={group.title}>
           <tr className="role-menus-group"><th scope="rowgroup" colSpan={4}>{group.title}</th></tr>
-          {group.items.map((item) => <tr key={item.id}>
+          {group.items.map((item) => <tr key={item.id} className={item.right ? 'role-menus-right' : undefined}>
             <th scope="row"><span className={'role-menus-name c-' + item.color}><i className={'fas ' + item.icon} aria-hidden="true" />
               <span><strong>{item.label}</strong><small>{item.hint}</small></span></span></th>
             <td className="role-col"><i className="fas fa-check role-menus-fixed" aria-label="Selalu" /></td>

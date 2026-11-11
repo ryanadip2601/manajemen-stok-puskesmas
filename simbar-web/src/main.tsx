@@ -69,8 +69,9 @@ type MenuGroup = { title: string; items: MenuItem[] };
 function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup[] {
   return MENU_GROUPS.map((group) => ({
     title: group.title,
-    items: group.items.filter((item) => role === 'admin' || item.share === 'always'
-      || (item.share === 'yes' && shared[role].includes(item.id))).map(({ id, label, icon, color }) => ({ id, label, icon, color })),
+    items: group.items.filter((item) => !item.right && (role === 'admin' || item.share === 'always'
+      || (item.share === 'yes' && (shared[role].includes(item.id) || (item.id === 'items' && shared[role].includes('catalog'))))))
+      .map(({ id, label, icon, color }) => ({ id, label, icon, color })),
   })).filter((group) => group.items.length);
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
@@ -79,6 +80,7 @@ const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'in', 'out', 'pickup
   'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'menus', 'profil'];
 function linkedSection(search: string) {
   const wanted = new URLSearchParams(search).get('menu');
+  if (wanted === 'catalog') return 'items'; // Kelola Barang now lives inside Data Barang
   return SECTIONS.find((section) => section === wanted) ?? null;
 }
 
@@ -385,9 +387,10 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
       : section === 'usulan' ? <MyUsulan canExport={warehouse} />
       : section === 'usulan-admin' ? <AdminUsulan />
       : section === 'checklist' ? <Checklist />
-      : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
-      : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} />
+      : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))
+        ? <Catalog list={(edit, version, add) => <Inventory kind="items" session={session} request={api} onEdit={edit} version={version} actions={add} />} />
+        : <Inventory key={section} kind={section} session={session} request={api} />)
       : <><DeviceApp compact /><Overview isAdmin={role === 'admin'} go={(target) => go(target as Section)} /></>}
     </div>
         </>}

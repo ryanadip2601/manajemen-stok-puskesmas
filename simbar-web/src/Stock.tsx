@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { rpc } from './supabase';
 
 type Option = { id: number; name: string };
@@ -39,12 +39,13 @@ function Status({ message, tone }: { message: string; tone: 'ok' | 'error' }) {
   return message ? <p className={tone === 'ok' ? 'success' : 'notice'} role={tone === 'ok' ? 'status' : 'alert'}>{message}</p> : null;
 }
 
-export function Catalog() {
+// Data Barang for people who may change barang: the shared list (passed in) plus the add/edit form and jenis barang.
+export function Catalog({ list }: { list: (edit: (id: number) => void, version: number, add: ReactNode) => ReactNode }) {
   const [options, loadError, reload] = useOptions();
-  const [term, setTerm] = useState('');
   const [editing, setEditing] = useState<ItemDetail | 'new' | null>(null);
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' }>({ text: '', tone: 'ok' });
   const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
 
   async function run(action: () => Promise<unknown>, success: string) {
     setBusy(true);
@@ -53,6 +54,7 @@ export function Catalog() {
       setMessage({ text: success, tone: 'ok' });
       setEditing(null);
       reload();
+      setVersion((v) => v + 1);
     } catch (error) {
       setMessage({ text: (error as Error).message, tone: 'error' });
     } finally {
@@ -64,6 +66,7 @@ export function Catalog() {
     setMessage({ text: '', tone: 'ok' });
     try {
       setEditing(await rpc<ItemDetail>('simbar_item_get', { item_id: id }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setMessage({ text: (error as Error).message, tone: 'error' });
     }
@@ -90,19 +93,15 @@ export function Catalog() {
       .then(() => form.reset());
   }
 
-  if (loadError) return <section className="panel"><h2>Kelola barang</h2><Status message={loadError} tone="error" /></section>;
+  if (loadError) return <section className="panel"><h2>Data barang</h2><Status message={loadError} tone="error" /></section>;
   if (!options) return <p role="status">Memuat data barang…</p>;
 
-  const needle = term.trim().toLowerCase();
-  const items = options.items.filter((item) => !needle || item.name.toLowerCase().includes(needle) || item.code.toLowerCase().includes(needle));
   const draft = editing === 'new' ? null : editing;
+  const add = <button className="primary" onClick={() => { setMessage({ text: '', tone: 'ok' }); setEditing('new'); }}>
+    <i className="fas fa-plus" aria-hidden="true" /> Tambah barang</button>;
 
   return <>
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Kelola barang</h2>
-        <button className="primary" onClick={() => { setMessage({ text: '', tone: 'ok' }); setEditing('new'); }}>Tambah barang</button>
-      </div>
+    {(editing || message.text) && <section className="panel">
       <Status message={message.text} tone={message.tone} />
       {editing && <form className="record-form" onSubmit={saveItem} key={draft?.id ?? 'new'}>
         <h3>{draft ? 'Ubah ' + draft.name : 'Barang baru'}</h3>
@@ -133,23 +132,8 @@ export function Catalog() {
           }}>Hapus barang</button>}
         </div>
       </form>}
-      <div className="inventory-search">
-        <label htmlFor="catalog-search">Cari barang</label>
-        <div className="filters"><input id="catalog-search" type="search" value={term} onChange={(event) => setTerm(event.target.value)}
-          placeholder="Nama atau kode" maxLength={100} /></div>
-      </div>
-      <p role="status">{number.format(items.length)} jenis barang.</p>
-      <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Tabel kelola barang">
-        <table>
-          <thead><tr><th scope="col">Nama dan kode</th><th scope="col">Stok</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
-          <tbody>{items.map((item) => <tr key={item.id}>
-            <th scope="row"><strong>{item.name}</strong><span>{item.code}</span></th>
-            <td>{number.format(item.stock)} {item.unit}</td>
-            <td><button className="secondary" onClick={() => edit(item.id)}>Ubah</button></td>
-          </tr>)}</tbody>
-        </table>
-      </div>
-    </section>
+    </section>}
+    {list(edit, version, add)}
     <section className="panel">
       <h2>Jenis barang</h2>
       <form className="filters" onSubmit={saveCategory}>

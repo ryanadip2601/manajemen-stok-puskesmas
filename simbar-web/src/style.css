@@ -811,3 +811,5 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .inventory-scroll tbody th .role-menus-name { display: flex; font-size: .9rem; color: var(--text); }
 .inventory-scroll tbody th .role-menus-name > span { display: block; font-size: inherit; color: inherit; }
 .role-menus td.role-col { vertical-align: middle; }
+.role-menus-right th .role-menus-name { padding-left: 26px; position: relative; }
+.role-menus-right th .role-menus-name::before { content: ''; position: absolute; left: 12px; top: 2px; width: 10px; height: 14px; border-left: 2px solid var(--border-strong); border-bottom: 2px solid var(--border-strong); border-bottom-left-radius: 4px; }
