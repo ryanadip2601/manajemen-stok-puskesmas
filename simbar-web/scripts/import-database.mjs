@@ -81,12 +81,20 @@ async function applyToSupabase(expected) {
     if (replace && exists) {
       await client.query(`CREATE TEMP TABLE import_auth_links ON COMMIT DROP AS
         SELECT lower(email) AS email, auth_user_id FROM simbar.users WHERE auth_user_id IS NOT NULL`);
+      // TRUNCATE ... CASCADE also empties media_objects (uploaded_by references users), so keep a copy.
+      const media = (await client.query("SELECT to_regclass('simbar.media_objects') IS NOT NULL AS exists")).rows[0].exists;
+      if (media) await client.query('CREATE TEMP TABLE import_media ON COMMIT DROP AS SELECT * FROM simbar.media_objects');
       await client.query('TRUNCATE ' + TABLES.map((table) => `simbar."${table}"`).join(', ') + ' RESTART IDENTITY CASCADE');
-    }
-    await client.query(inserts);
-    if (replace && exists) {
+      await client.query(inserts);
       links = (await client.query(`UPDATE simbar.users u SET auth_user_id = l.auth_user_id
         FROM import_auth_links l WHERE lower(u.email) = l.email`)).rowCount;
+      if (media) {
+        await client.query(`UPDATE import_media SET uploaded_by = NULL
+          WHERE uploaded_by IS NOT NULL AND uploaded_by NOT IN (SELECT id FROM simbar.users)`);
+        await client.query('INSERT INTO simbar.media_objects SELECT * FROM import_media');
+      }
+    } else {
+      await client.query(inserts);
     }
     for (const sql of functions) await client.query(sql.replace(/^\s*BEGIN;|COMMIT;\s*$/g, ''));
     assert.deepEqual((await client.query(countsSql)).rows[0], expected.counts, 'Supabase row counts differ from the rehearsal.');
