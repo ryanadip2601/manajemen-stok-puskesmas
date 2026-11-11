@@ -400,8 +400,11 @@ class Engine {
 
 const SOUNDS = Object.keys(soundNames) as Sound[];
 
-export function useMusic(season: Season) {
-  const [on, setOn] = useState(() => remembered('simbar-music') === 'on');
+// `on` is what is playing right now; the remembered choice ("simbar-music") is what the person last chose.
+// Signing out stops the music but keeps that choice, and signing in again restores it. Signed out, the music
+// never starts by itself: it only plays when someone presses play.
+export function useMusic(season: Season, signedIn: boolean) {
+  const [on, setOn] = useState(false);
   const [sound, setSoundState] = useState<Sound>(() => { const saved = remembered('simbar-music-sound'); return SOUNDS.find((s) => s === saved) ?? 'musim'; });
   const [volume, setVolumeState] = useState(() => { const saved = Number(remembered('simbar-music-volume')); return saved >= 0 && saved <= 1 && remembered('simbar-music-volume') !== null ? saved : .8; });
   const engine = useRef<Engine | null>(null);
@@ -410,24 +413,42 @@ export function useMusic(season: Season) {
 
   const start = (next = latest.current.sound) => {
     try { (engine.current ??= new Engine()).play(next, latest.current.season, latest.current.volume); } catch { /* no audio support */ }
+    setOn(true);
   };
+  const play = (next?: Sound) => { remember('simbar-music', 'on'); start(next); };
+  // Stop and remember "off" (the person turned it off).
   const stop = () => {
-    engine.current?.stop();
     remember('simbar-music', 'off');
+    engine.current?.stop();
+    setOn(false);
+  };
+  // Stop but keep the remembered choice (signing out).
+  const pause = () => {
+    engine.current?.stop();
     setOn(false);
   };
 
-  // Music left on last time waits for the first tap or key press, which browsers count as permission.
+  // Signed in with the music left on: start straight away (allowed once the person has interacted, e.g. pressed
+  // "Masuk"); browsers that still refuse get it on the next tap or key press.
   useEffect(() => {
-    if (!on || engine.current?.playing) return;
-    const once = () => start();
+    if (!signedIn || remembered('simbar-music') !== 'on' || engine.current?.playing) return;
+    if (navigator.userActivation?.hasBeenActive) start();
+    // Only if it is still wanted and not already playing (otherwise the tap on "Keluar" would restart it).
+    const once = () => { if (remembered('simbar-music') === 'on' && !engine.current?.playing) start(); };
     window.addEventListener('pointerdown', once, { once: true });
     window.addEventListener('keydown', once, { once: true });
     return () => {
       window.removeEventListener('pointerdown', once);
       window.removeEventListener('keydown', once);
     };
-  }, [on]);
+  }, [signedIn]);
+
+  // Signing out (or the session ending) silences the music without forgetting the choice.
+  const wasSignedIn = useRef(signedIn);
+  useEffect(() => {
+    if (wasSignedIn.current && !signedIn) pause();
+    wasSignedIn.current = signedIn;
+  }, [signedIn]);
 
   useEffect(() => { engine.current?.setSeason(season); }, [season]);
 
@@ -443,30 +464,25 @@ export function useMusic(season: Season) {
     try {
       media.setActionHandler('pause', () => stop());
       media.setActionHandler('stop', () => stop());
-      media.setActionHandler('play', () => { start(); remember('simbar-music', 'on'); setOn(true); });
+      media.setActionHandler('play', () => play());
     } catch { /* not supported */ }
   }, [on, sound]);
 
   useEffect(() => () => { engine.current?.close(); engine.current = null; }, []);
 
-  const toggle = () => {
-    if (on) { stop(); return; }
-    start();
-    remember('simbar-music', 'on');
-    setOn(true);
-  };
+  const toggle = () => { if (on) stop(); else play(); };
   const setSound = (next: Sound) => {
     remember('simbar-music-sound', next);
     setSoundState(next);
     if (on && engine.current?.playing) engine.current.setSound(next);
-    else { start(next); remember('simbar-music', 'on'); setOn(true); }
+    else play(next);
   };
   const setVolume = (next: number) => {
     remember('simbar-music-volume', String(next));
     setVolumeState(next);
     engine.current?.setVolume(next);
   };
-  return { on, sound, volume, toggle, stop, setSound, setVolume };
+  return { on, sound, volume, toggle, stop, pause, setSound, setVolume };
 }
 
 export type Music = ReturnType<typeof useMusic>;

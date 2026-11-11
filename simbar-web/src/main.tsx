@@ -111,7 +111,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [theme, toggleTheme] = useTheme();
   const ambience = useSeason();
-  const music = useMusic(ambience.season ?? seasonForDate());
+  const music = useMusic(ambience.season ?? seasonForDate(), !!(ready && session && !recovery && status?.approved));
 
   useEffect(() => {
     const subscription = auth?.onAuthStateChange((event, next) => {
@@ -148,8 +148,8 @@ function App() {
 
   async function signOut() {
     setNotice('');
-    // Signing out stops the music; closing the app stops it on its own.
-    music.stop();
+    // Signing out stops the music but remembers whether it was on, so it comes back after the next sign-in.
+    music.pause();
     if (status?.approved) {
       await forgetThisDevice();
       await rpc('simbar_session_event', { event: 'logout', agent: navigator.userAgent }).catch(() => {});
