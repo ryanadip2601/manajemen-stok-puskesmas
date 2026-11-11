@@ -102,7 +102,6 @@ function App() {
 
   return <div className="shell">
     <header className="site-header"><Brand /><div className="header-actions">
-      <span className="tag">Preview</span>
       {session && <button className="secondary" onClick={signOut}>Keluar</button>}
     </div></header>
     <main>

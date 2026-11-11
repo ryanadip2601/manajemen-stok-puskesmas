@@ -85,7 +85,7 @@ footer { color: #52675e; padding: 24px 0; border-top: 1px solid #d8e3dc; font-si
 .inventory-search { margin-top: 18px; }
 .inventory-search label { display: block; font-weight: 650; margin-bottom: 6px; }
 .inventory-search input { flex: 1 1 220px; min-width: 0; border: 1px solid #bfcfc5; border-radius: 9px; padding: 8px 11px; }
-.inventory-scroll { overflow-x: auto; }
+.inventory-scroll { overflow-x: auto; position: relative; }
 .inventory-scroll table { width: 100%; border-collapse: collapse; text-align: left; }
 .inventory-scroll th, .inventory-scroll td { padding: 10px; border-bottom: 1px solid #e3ebe6; vertical-align: top; }
 .inventory-scroll thead { background: #eef5f0; }
