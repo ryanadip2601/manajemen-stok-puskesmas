@@ -82,3 +82,19 @@ export const SONGS: Song[] = [
     chords: bars('Am Am Am F Am E Am F Am E Am Am Dm E', 4),
   },
 ];
+
+// Recordings made for the Puskesmas (files in public/music, loudness-matched at about -16 LUFS).
+export type Recording = { id: string; title: string; note: string; src: string };
+export const RECORDINGS: Recording[] = [
+  { id: 'mars', title: 'Mars Puskesmas', note: 'Rekaman UPTD Puskesmas Karang Rejo', src: '/music/mars-puskesmas.mp3' },
+  { id: 'karang-rejo', title: 'Puskesmas Karang Rejo', note: 'farida_kurnia1971 · dibuat dengan Suno', src: '/music/puskesmas-karang-rejo.mp3' },
+  { id: 'pelayanan-1', title: 'Pelayanan Kami (versi 1)', note: 'farida_kurnia1971 · dibuat dengan Suno', src: '/music/pelayanan-kami-1.mp3' },
+  { id: 'pelayanan-2', title: 'Pelayanan Kami (versi 2)', note: 'farida_kurnia1971 · dibuat dengan Suno', src: '/music/pelayanan-kami-2.mp3' },
+];
+
+// The whole playlist: the Puskesmas songs first, then the guitar pieces.
+export type Item = ({ kind: 'recording' } & Recording) | ({ kind: 'guitar' } & Song);
+export const PLAYLIST: Item[] = [
+  ...RECORDINGS.map((r) => ({ kind: 'recording' as const, ...r })),
+  ...SONGS.map((song) => ({ kind: 'guitar' as const, ...song })),
+];

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { remember, remembered } from './effects';
-import { SONGS, type Song } from './songs';
+import { PLAYLIST, type Song } from './songs';
 
 // Background music: ten public-domain melodies played on an acoustic guitar that is synthesised in the browser
 // (Karplus-Strong plucked strings, a guitar-body resonance and a room reverb). No audio files, no licensing.
@@ -26,12 +26,11 @@ function voicing(symbol: string) {
   return { bass, tones: [bass + 12, ...tones].slice(0, 3).sort((a, b) => a - b), upper: tones };
 }
 
-// Notes are planned ahead; while minimised the browser slows timers, so we plan much further ahead.
+// Guitar pieces are planned a moment ahead on the audio clock; recordings stream from an <audio> element.
+// Moving on to the next item is driven by audio events (not timers), so the playlist keeps going while minimised.
 const LOOKAHEAD = .3;
-const AHEAD_VISIBLE = 5;
-const AHEAD_HIDDEN = 80;
 
-type Session = { song: number; fade: GainNode; strings: AudioNode; until: number };
+type Session = { index: number; fade: GainNode; strings: AudioNode; timer?: ConstantSourceNode };
 
 class Guitar {
   playing = false;
@@ -43,8 +42,10 @@ class Guitar {
   private element: HTMLAudioElement | null = null;
   private limiter: DynamicsCompressorNode;
   private session: Session | null = null;
-  private timer = 0;
   private notes = new Map<number, AudioBuffer>();
+  // One reusable player for the recordings, routed through the same volume and limiter as the guitar.
+  private record = new Audio();
+  private recordSource: MediaElementAudioSourceNode;
 
   constructor() {
     // iPhones mute web audio with the silent switch unless the page asks for media playback.
@@ -62,14 +63,17 @@ class Guitar {
     this.reverb.connect(room).connect(wet).connect(this.mix);
     // Level first, then a fast limiter as the very last stage, so chance pile-ups of notes can never pass 1.0.
     const level = this.ctx.createGain();
-    level.gain.value = 1.15;
+    level.gain.value = .95;
     this.limiter = this.ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -3;
-    this.limiter.knee.value = 0;
+    this.limiter.knee.value = 4;
     this.limiter.ratio.value = 20;
-    this.limiter.attack.value = .001;
+    this.limiter.attack.value = .003;
     this.limiter.release.value = .25;
     this.mix.connect(this.master).connect(level).connect(this.limiter);
+    this.record.preload = 'auto';
+    this.recordSource = this.ctx.createMediaElementSource(this.record);
+    this.record.addEventListener('ended', () => { if (this.playing && this.session && PLAYLIST[this.session.index].kind === 'recording') this.advance(); });
     // Playing through an <audio> element makes it real media playback: it keeps going while minimised
     // and shows up in the system media controls. Falls back to the plain speaker output.
     try {
@@ -83,7 +87,7 @@ class Guitar {
   }
 
   // Call straight from a tap or click: browsers only unlock sound inside the gesture itself.
-  play(song: number, volume: number) {
+  play(index: number, volume: number) {
     this.ctx.resume().catch(() => {});
     this.element?.play().catch(() => {
       this.element = null;
@@ -91,30 +95,28 @@ class Guitar {
     });
     this.ramp(this.master.gain, volume, 1.2);
     this.playing = true;
-    if (!this.session) this.switchTo(song);
-    if (!this.timer) this.timer = window.setInterval(this.tick, 500);
-    this.tick();
+    if (!this.session) this.switchTo(index);
+    else if (PLAYLIST[this.session.index].kind === 'recording') this.record.play().catch(() => {});
   }
 
-  setSong(song: number) { if (this.playing) { this.switchTo(song); this.tick(); } }
+  setSong(index: number) { if (this.playing) this.switchTo(index); }
   setVolume(volume: number) { if (this.playing) this.ramp(this.master.gain, volume, .15); }
 
   stop() {
     this.playing = false;
-    window.clearInterval(this.timer);
-    this.timer = 0;
     this.ramp(this.master.gain, 0, .8);
     window.setTimeout(() => {
       if (this.playing) return;
-      this.session?.fade.disconnect();
+      this.end(this.session);
       this.session = null;
+      this.record.pause();
       this.element?.pause();
       this.ctx.suspend().catch(() => {});
     }, 1000);
   }
 
   close() {
-    window.clearInterval(this.timer);
+    this.record.pause();
     this.element?.pause();
     this.ctx.close().catch(() => {});
   }
@@ -126,12 +128,24 @@ class Guitar {
     param.linearRampToValueAtTime(value, now + seconds);
   }
 
-  // Cross-fade to another song: notes already planned for the old one fade out with its bus.
-  private switchTo(song: number) {
+  private end(session: Session | null) {
+    if (!session) return;
+    if (session.timer) { session.timer.onended = null; try { session.timer.stop(); } catch { /* already stopped */ } }
+    session.fade.disconnect();
+  }
+
+  private advance() { this.switchTo((this.session ? this.session.index + 1 : 0) % PLAYLIST.length); }
+
+  // Cross-fade to another item: notes already planned for the old one fade out with its bus.
+  private switchTo(index: number) {
     const old = this.session;
+    const item = PLAYLIST[index];
+    // Recording to recording shares one player, so fade the old one out quickly before changing the file.
+    const swapRecord = !!old && PLAYLIST[old.index].kind === 'recording' && item.kind === 'recording';
     if (old) {
-      this.ramp(old.fade.gain, 0, 1.5);
-      window.setTimeout(() => old.fade.disconnect(), 2000);
+      this.ramp(old.fade.gain, 0, swapRecord ? .12 : 1.5);
+      if (old.timer) old.timer.onended = null;
+      window.setTimeout(() => this.end(old), 2000);
     }
     const fade = this.ctx.createGain();
     fade.gain.value = 0;
@@ -157,23 +171,42 @@ class Guitar {
     softer.Q.value = .5;
     body.connect(air).connect(soft).connect(softer).connect(fade);
     softer.connect(this.reverb);
-    this.session = { song, fade, strings: body, until: this.ctx.currentTime + LOOKAHEAD };
+    const session: Session = { index, fade, strings: body };
+    this.session = session;
     this.ramp(fade.gain, 1, 1.2);
-  }
+    this.onSong(index);
 
-  private tick = () => {
-    const session = this.session;
-    if (!this.playing || !session) return;
-    const horizon = this.ctx.currentTime + (document.hidden ? AHEAD_HIDDEN : AHEAD_VISIBLE);
-    session.until = Math.max(session.until, this.ctx.currentTime + LOOKAHEAD);
-    while (session.until < horizon) {
-      const index = session.song;
-      const startsIn = (session.until - this.ctx.currentTime) * 1000;
-      window.setTimeout(() => { if (this.session === session) this.onSong(index); }, Math.max(0, startsIn));
-      session.until += this.perform(session, SONGS[index], session.until) + 1.6;
-      session.song = (index + 1) % SONGS.length;
+    if (item.kind === 'recording') {
+      const load = () => {
+        if (this.session !== session) return;
+        this.recordSource.disconnect();
+        this.recordSource.connect(fade);
+        this.record.src = item.src;
+        this.record.currentTime = 0;
+        this.record.play().catch(() => {
+          // Refused (no recent tap): try again on the next tap or key press.
+          const retry = () => { if (this.session === session && this.playing) this.record.play().catch(() => {}); };
+          window.addEventListener('pointerdown', retry, { once: true });
+          window.addEventListener('keydown', retry, { once: true });
+        });
+      };
+      if (swapRecord) window.setTimeout(load, 150);
+      else load();
+    } else {
+      // Let a recording finish fading out before stopping it; cutting it mid-fade would click.
+      window.setTimeout(() => { if (this.session && PLAYLIST[this.session.index].kind !== 'recording') this.record.pause(); }, 1600);
+      const start = this.ctx.currentTime + LOOKAHEAD;
+      const length = this.perform(session, item, start);
+      // A silent source that ends when the piece does: its "ended" event moves the playlist on, even when minimised.
+      const timer = this.ctx.createConstantSource();
+      timer.offset.value = 0;
+      timer.connect(fade);
+      timer.onended = () => { if (this.session === session && this.playing) this.advance(); };
+      timer.start(start);
+      timer.stop(start + length + 1.6);
+      session.timer = timer;
     }
-  };
+  }
 
   /* ---------- The guitar ---------- */
 
@@ -323,7 +356,7 @@ class Guitar {
 // never starts by itself: it only plays when someone presses play.
 export function useMusic(signedIn: boolean) {
   const [on, setOn] = useState(false);
-  const [song, setSongState] = useState(() => { const saved = SONGS.findIndex((s) => s.id === remembered('simbar-music-song')); return saved < 0 ? 0 : saved; });
+  const [song, setSongState] = useState(() => { const saved = PLAYLIST.findIndex((s) => s.id === remembered('simbar-music-song')); return saved < 0 ? 0 : saved; });
   const [volume, setVolumeState] = useState(() => { const saved = Number(remembered('simbar-music-volume')); return saved >= 0 && saved <= 1 && remembered('simbar-music-volume') !== null ? saved : .8; });
   const engine = useRef<Guitar | null>(null);
   const latest = useRef({ song, volume });
@@ -378,15 +411,16 @@ export function useMusic(signedIn: boolean) {
     if (!media) return;
     media.playbackState = on ? 'playing' : 'paused';
     if (on && 'MediaMetadata' in window) {
-      media.metadata = new MediaMetadata({ title: SONGS[song].title, artist: 'Gitar akustik · SIMBAR', album: 'UPTD Puskesmas Karang Rejo',
+      const item = PLAYLIST[song];
+      media.metadata = new MediaMetadata({ title: item.title, artist: item.kind === 'recording' ? item.note : 'Gitar akustik · SIMBAR', album: 'UPTD Puskesmas Karang Rejo',
         artwork: [{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
     }
     try {
       media.setActionHandler('pause', () => stop());
       media.setActionHandler('stop', () => stop());
       media.setActionHandler('play', () => play());
-      media.setActionHandler('nexttrack', () => chooseSong((latest.current.song + 1) % SONGS.length));
-      media.setActionHandler('previoustrack', () => chooseSong((latest.current.song + SONGS.length - 1) % SONGS.length));
+      media.setActionHandler('nexttrack', () => chooseSong((latest.current.song + 1) % PLAYLIST.length));
+      media.setActionHandler('previoustrack', () => chooseSong((latest.current.song + PLAYLIST.length - 1) % PLAYLIST.length));
     } catch { /* not supported */ }
   }, [on, song]);
 
@@ -394,7 +428,7 @@ export function useMusic(signedIn: boolean) {
 
   const toggle = () => { if (on) stop(); else play(); };
   const chooseSong = (next: number) => {
-    remember('simbar-music-song', SONGS[next].id);
+    remember('simbar-music-song', PLAYLIST[next].id);
     setSongState(next);
     if (on && engine.current?.playing) engine.current.setSong(next);
     else play(next);
@@ -425,20 +459,25 @@ export function MusicMenu({ music }: { music: Music }) {
   }, [open]);
   return <div className="season-menu music-menu" ref={box}>
     <button className={'icon-button music-toggle' + (music.on ? ' on' : '')} aria-haspopup="dialog" aria-expanded={open}
-      aria-label="Musik latar" title={music.on ? 'Gitar akustik: ' + SONGS[music.song].title : 'Musik latar'} onClick={() => setOpen(!open)}>
+      aria-label="Musik latar" title={music.on ? 'Musik latar: ' + PLAYLIST[music.song].title : 'Musik latar'} onClick={() => setOpen(!open)}>
       {music.on ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-guitar" aria-hidden="true" />}
     </button>
     {open && <div className="season-list music-panel" role="dialog" aria-label="Musik latar">
-      <p className="music-title"><i className="fas fa-guitar" aria-hidden="true" /> Gitar akustik</p>
+      <p className="music-title"><i className="fas fa-music" aria-hidden="true" /> Musik latar</p>
       <button className={music.on ? 'secondary music-play' : 'primary music-play'} aria-pressed={music.on} onClick={music.toggle}>
         <i className={music.on ? 'fas fa-stop' : 'fas fa-play'} aria-hidden="true" /> {music.on ? 'Hentikan musik' : 'Putar musik'}
       </button>
       <div role="radiogroup" aria-label="Pilih lagu">
-        {SONGS.map((item, index) => <button key={item.id} role="radio" aria-checked={music.song === index} onClick={() => music.chooseSong(index)}>
-          <span className="song-number" aria-hidden="true">{music.on && music.song === index ? <span className="eq"><b /><b /><b /></span> : index + 1}</span>
-          <span>{item.title}<small>{item.note}</small></span>
-          {music.song === index && <i className="fas fa-check season-check" aria-hidden="true" />}
-        </button>)}
+        {PLAYLIST.map((item, index) => <Fragment key={item.id}>
+          {(index === 0 || PLAYLIST[index - 1].kind !== item.kind) &&
+            <p className="music-group"><i className={item.kind === 'recording' ? 'fas fa-hospital' : 'fas fa-guitar'} aria-hidden="true" />
+              {item.kind === 'recording' ? 'Lagu Puskesmas' : 'Gitar akustik'}</p>}
+          <button role="radio" aria-checked={music.song === index} onClick={() => music.chooseSong(index)}>
+            <span className="song-number" aria-hidden="true">{music.on && music.song === index ? <span className="eq"><b /><b /><b /></span> : index + 1}</span>
+            <span>{item.title}<small>{item.note}</small></span>
+            {music.song === index && <i className="fas fa-check season-check" aria-hidden="true" />}
+          </button>
+        </Fragment>)}
       </div>
       <label className="music-volume">
         <i className="fas fa-volume-low" aria-hidden="true" />
