@@ -292,7 +292,11 @@ class Ambient {
     limiter.ratio.value = 8;
     limiter.attack.value = .004;
     limiter.release.value = .3;
-    makeup.gain.value = 2.2;
+    makeup.gain.value = 1.25;
+    // Soft clipper: rounds off any peak that still gets through, so loud never means distorted.
+    const soft = this.ctx.createWaveShaper();
+    soft.curve = Float32Array.from({ length: 1025 }, (_, i) => Math.tanh(1.5 * (i / 512 - 1)) / Math.tanh(1.5));
+    soft.oversample = '2x';
     const delay = this.ctx.createDelay(1);
     const feedback = this.ctx.createGain();
     const wet = this.ctx.createGain();
@@ -305,7 +309,7 @@ class Ambient {
     this.tone.connect(delay);
     delay.connect(feedback).connect(delay);
     delay.connect(wet).connect(this.master);
-    this.master.connect(limiter).connect(makeup).connect(this.ctx.destination);
+    this.master.connect(limiter).connect(makeup).connect(soft).connect(this.ctx.destination);
   }
 
   // Call straight from a tap or click: Safari only unlocks sound inside the gesture itself.
