@@ -13,7 +13,7 @@ BEGIN
     RETURN jsonb_build_object(
         'rooms', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', nama_ruangan) ORDER BY lower(nama_ruangan)), '[]')
             FROM simbar.ruangan WHERE is_active),
-        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'category', cat.name, 'stock', i.stock,
+        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'category', cat.name, 'photo', i.photo, 'stock', i.stock,
                 'minimum', i.minimum_stock, 'unit', u.symbol, 'low', i.stock <= i.minimum_stock) ORDER BY lower(i.name), i.id), '[]')
             FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id LEFT JOIN simbar.categories cat ON cat.id = i.category_id),
         'categories', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name) ORDER BY lower(name)), '[]') FROM simbar.categories),

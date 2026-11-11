@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { ItemThumb } from './media';
 
 export type InventoryKind = 'items' | 'assets';
 type InventoryRow = {
@@ -13,6 +14,7 @@ type InventoryRow = {
   room: string | null;
   condition: string | null;
   status: string | null;
+  photo?: string | null;
 };
 type InventoryPage = { rows: InventoryRow[]; total: number };
 type Props = {
@@ -89,7 +91,7 @@ export function Inventory({ kind, session, request, onEdit, actions, version = 0
       <p role="status">{number.format(total)} {isItem ? 'jenis barang' : 'aset'} ditemukan.</p>
       <div className="inventory-scroll" tabIndex={0} role="region" aria-label={isItem ? 'Tabel barang' : 'Tabel aset'}>
         <table>
-          <thead><tr><th scope="col">Nama dan kode</th><th scope="col">Kategori</th>
+          <thead><tr>{isItem && <th scope="col"><span className="sr-only">Foto</span></th>}<th scope="col">Nama dan kode</th><th scope="col">Kategori</th>
             <th scope="col">{isItem ? 'Stok' : 'Jumlah'}</th>
             {isItem ? <th scope="col">Stok minimum</th> : <>
               <th scope="col">Ruangan</th><th scope="col">Kondisi</th><th scope="col">Status</th>
@@ -97,6 +99,7 @@ export function Inventory({ kind, session, request, onEdit, actions, version = 0
             {onEdit && <th scope="col"><span className="sr-only">Aksi</span></th>}
           </tr></thead>
           <tbody>{state.data.rows.map((row) => <tr key={row.id}>
+            {isItem && <td className="thumb-cell"><ItemThumb url={row.photo} name={row.name} /></td>}
             <th scope="row"><strong>{row.name}</strong><span>{row.code}</span></th>
             <td>{row.category}</td>
             <td>{number.format(row.quantity)}{row.unit && ' ' + row.unit}</td>

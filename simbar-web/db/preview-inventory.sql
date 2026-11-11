@@ -31,7 +31,7 @@ BEGIN
     WITH matched AS MATERIALIZED (
         SELECT i.id, i.code, i.name, c.name AS category, i.stock AS quantity,
                u.symbol AS unit, i.minimum_stock AS minimum, null::text AS room,
-               null::text AS condition, null::text AS status
+               null::text AS condition, null::text AS status, i.photo, i.photo_source
         FROM simbar.items i
         JOIN simbar.categories c ON c.id = i.category_id
         JOIN simbar.units u ON u.id = i.unit_id
@@ -41,7 +41,7 @@ BEGIN
         )
         UNION ALL
         SELECT a.id, a.kode_aset, a.nama_aset, k.nama_kategori, a.jumlah,
-               null, null, r.nama_ruangan, a.kondisi, a.status_aset
+               null, null, r.nama_ruangan, a.kondisi, a.status_aset, null, null
         FROM simbar.barang_aset a
         JOIN simbar.kategori_aset k ON k.id = a.kategori_aset_id
         JOIN simbar.ruangan r ON r.id = a.ruangan_id

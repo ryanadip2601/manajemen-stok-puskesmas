@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ItemThumb } from './media';
 
 // A searchable replacement for the long "Pilih barang" lists: type part of a name, code or jenis barang,
 // see stock and satuan beside every match, grouped by jenis barang. Works inside forms (name + required)
 // and as a controlled field (value + onChange).
-export type PickItem = { id: number; name: string; code?: string; stock?: number; unit?: string; category?: string; note?: string };
+export type PickItem = { id: number; name: string; code?: string; stock?: number; unit?: string; category?: string; note?: string; photo?: string | null };
 
 const number = new Intl.NumberFormat('id-ID');
 const fold = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -60,7 +61,8 @@ export function ItemPicker({ items, value, defaultValue = '', onChange, name, re
   const shown = open ? query : current ? `${current.name}${current.code ? ' (' + current.code + ')' : ''}` : allLabel && !selected ? allLabel : '';
   let lastCategory: string | undefined;
   return <div className="item-picker" ref={box}>
-    <i className="fas fa-magnifying-glass item-picker-icon" aria-hidden="true" />
+    {current && !open && current.photo !== undefined ? <span className="item-picker-icon photo"><ItemThumb url={current.photo} name={current.name} size={26} /></span>
+      : <i className="fas fa-magnifying-glass item-picker-icon" aria-hidden="true" />}
     <input type="text" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-label={label}
       aria-activedescendant={open && options.length ? `${listId}-${active}` : undefined}
       value={shown} placeholder={placeholder} autoComplete="off"
@@ -78,9 +80,9 @@ export function ItemPicker({ items, value, defaultValue = '', onChange, name, re
           <li key={item ? item.id : 'all'} id={`${listId}-${index}`} role="option" aria-selected={item ? String(item.id) === selected : !selected}
             aria-disabled={disabled} className={'item-picker-option' + (index === active ? ' active' : '') + (disabled ? ' disabled' : '')}
             onMouseDown={(event) => { event.preventDefault(); choose(item); }} onMouseEnter={() => setActive(index)}>
-            {item ? <><span className="item-picker-name">{item.name}</span>
+            {item ? <>{item.photo !== undefined && <ItemThumb url={item.photo} name={item.name} size={34} />}<span className="item-picker-text"><span className="item-picker-name">{item.name}</span>
               <span className="item-picker-meta">{[item.code, item.stock !== undefined ? `stok ${number.format(item.stock)} ${item.unit ?? ''}` : null, item.note]
-                .filter(Boolean).join(' · ')}{disabled ? ' · sudah dipilih' : ''}</span></> : <span className="item-picker-name">{allLabel}</span>}
+                .filter(Boolean).join(' · ')}{disabled ? ' · sudah dipilih' : ''}</span></span></> : <span className="item-picker-name">{allLabel}</span>}
           </li>];
       })}
     </ul>}

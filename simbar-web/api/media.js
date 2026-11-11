@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { MAX_PHOTO_BYTES, error, headers, readPhoto, rpc, uploadPhoto } from './_shared.js';
+import { MAX_PHOTO_BYTES, error, headers, readPhoto, rpc, uploadItemPhoto, uploadPhoto } from './_shared.js';
 
 export default { fetch: handler };
 
@@ -40,6 +40,13 @@ async function upload(request) {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return error(415, 'Foto harus berformat JPEG.');
 
   const id = randomBytes(32).toString('hex');
+  // POST /api/media?purpose=item: a barang photo for people allowed to change barang; returns its public URL.
+  if (new URL(request.url).searchParams.get('purpose') === 'item') {
+    const allowed = await rpc(request, 'simbar_can_edit_items', {});
+    if (allowed.response) return allowed.response;
+    if (allowed.data !== true) return error(403, 'Akses ditolak untuk peran ini.');
+    return Response.json({ url: await uploadItemPhoto(bytes, id) }, { status: 201, headers });
+  }
   const meta = await uploadPhoto(bytes, id);
   const registered = await rpc(request, 'simbar_media_register', {
     public_id: meta.public_id, asset_id: meta.asset_id, asset_version: meta.version,

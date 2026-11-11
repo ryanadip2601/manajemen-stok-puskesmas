@@ -10,7 +10,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
     PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang', 'staff']);
-    RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name,
+    RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'photo', i.photo,
             'stock', i.stock, 'unit', u.symbol, 'category', c.name) ORDER BY lower(i.name), i.id), '[]')
         FROM simbar.items i
         JOIN simbar.units u ON u.id = i.unit_id

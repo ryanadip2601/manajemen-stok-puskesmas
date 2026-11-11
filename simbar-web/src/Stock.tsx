@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { rpc } from './supabase';
 import { ItemPicker } from './ItemPicker';
+import { ItemPhotoEditor } from './FotoBarang';
 
 type Option = { id: number; name: string };
 type Category = Option & { description: string | null; items: number };
@@ -8,6 +9,7 @@ type Unit = Option & { symbol: string };
 type ItemOption = Option & { code: string; stock: number; unit: string; category?: string };
 type Options = { categories: Category[]; units: Unit[]; items: ItemOption[] };
 type ItemDetail = {
+  photo?: string | null; photoSource?: string | null;
   id: number; code: string; name: string; categoryId: number; unitId: number; description: string | null;
   perolehan: string; price: number; stock: number; minimumStock: number; barcode: string | null;
 };
@@ -106,6 +108,8 @@ export function Catalog({ list }: { list: (edit: (id: number) => void, version: 
       <Status message={message.text} tone={message.tone} />
       {editing && <form className="record-form" onSubmit={saveItem} key={draft?.id ?? 'new'}>
         <h3>{draft ? 'Ubah ' + draft.name : 'Barang baru'}</h3>
+        {draft && <ItemPhotoEditor itemId={draft.id} name={draft.name} photo={draft.photo} source={draft.photoSource}
+          onChange={(photo, photoSource) => { setEditing({ ...draft, photo, photoSource }); setVersion((v) => v + 1); }} />}
         <label>Kode barang<input name="code" required maxLength={50} defaultValue={draft?.code} /></label>
         <label>Nama barang<input name="name" required maxLength={255} defaultValue={draft?.name} /></label>
         <label>Jenis barang<select name="category" required defaultValue={draft?.categoryId ?? ''}>

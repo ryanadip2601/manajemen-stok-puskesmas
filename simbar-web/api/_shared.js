@@ -65,6 +65,25 @@ export async function readPhoto({ publicId, format, size }) {
 }
 
 // Uploads a JPEG as a private (authenticated) Cloudinary asset under simbar-uploads/<random hex>.
+// Barang photos are product pictures, not private records: public images in simbar-items/, served straight from the CDN.
+export async function uploadItemPhoto(bytes, id) {
+  const config = cloudinary();
+  if (!config) throw new Error('Koneksi foto belum tersedia.');
+  const params = { asset_folder: 'SIMBAR/barang', overwrite: 'false', public_id: 'simbar-items/' + id, timestamp: String(Math.floor(Date.now() / 1000)) };
+  const form = new FormData();
+  for (const [name, value] of Object.entries({ ...params, api_key: config.apiKey, signature: sign(params, config.secret) })) form.set(name, value);
+  form.set('file', new Blob([bytes], { type: 'image/jpeg' }), 'foto.jpg');
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloud)}/image/upload`, {
+    method: 'POST', body: form, redirect: 'error', signal: AbortSignal.timeout(25000),
+  });
+  const meta = response.ok ? await response.json().catch(() => null) : null;
+  if (meta?.public_id !== params.public_id || meta?.type !== 'upload' || meta?.format !== 'jpg'
+      || typeof meta?.secure_url !== 'string' || !meta.secure_url.startsWith('https://res.cloudinary.com/')) {
+    throw new Error('Foto belum bisa disimpan ke Cloudinary.');
+  }
+  return meta.secure_url;
+}
+
 export async function uploadPhoto(bytes, id) {
   const config = cloudinary();
   if (!config) throw new Error('Koneksi foto belum tersedia.');

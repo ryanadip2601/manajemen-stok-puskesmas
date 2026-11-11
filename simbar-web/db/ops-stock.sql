@@ -16,7 +16,7 @@ BEGIN
             ORDER BY lower(name)), '[]') FROM simbar.categories c),
         'units', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'symbol', symbol)
             ORDER BY lower(name)), '[]') FROM simbar.units),
-        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'category', cat.name,
+        'items', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'code', i.code, 'name', i.name, 'category', cat.name, 'photo', i.photo, 'photoSource', i.photo_source,
                 'stock', i.stock, 'unit', u.symbol) ORDER BY lower(i.name), i.id), '[]')
             FROM simbar.items i JOIN simbar.units u ON u.id = i.unit_id LEFT JOIN simbar.categories cat ON cat.id = i.category_id)
     );
@@ -31,7 +31,7 @@ BEGIN
     PERFORM simbar.require_menu(ARRAY['catalog']);
     RETURN (SELECT jsonb_build_object('id', id, 'code', code, 'name', name, 'categoryId', category_id,
             'unitId', unit_id, 'description', description, 'perolehan', perolehan, 'price', price,
-            'stock', stock, 'minimumStock', minimum_stock, 'barcode', barcode)
+            'stock', stock, 'minimumStock', minimum_stock, 'barcode', barcode, 'photo', photo, 'photoSource', photo_source)
         FROM simbar.items WHERE id = item_id);
 END;
 $function$;

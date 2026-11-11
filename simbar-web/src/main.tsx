@@ -9,6 +9,7 @@ import { RestockNotices } from './Permintaan';
 import { Verifikasi } from './Verifikasi';
 import { Pengajuan } from './Pengajuan';
 import { RapikanBarang } from './Rapikan';
+import { FotoAsliPanel } from './FotoBarang';
 import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
@@ -416,6 +417,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
             allowed={(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
       : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))
         ? <Catalog list={(edit, version, add, refresh) => <>
+            <FotoAsliPanel version={version} refresh={refresh} />
             <RapikanBarang admin={role === 'admin'} edit={edit} refresh={refresh} version={version} />
             <Inventory kind="items" session={session} request={api} onEdit={edit} version={version} actions={add} /></>} />
         : <Inventory key={section} kind={section} session={session} request={api} />)

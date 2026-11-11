@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -573,6 +573,23 @@ try {
   assert.equal(Number((await one('SELECT public.simbar_aset_register_assign() AS r')).r.aset), 1, 'after the fix it gets a number');
   const labels = (await one(`SELECT public.simbar_aset_labels('{}') AS l`)).l;
   assert.ok(labels.length > 0 && labels.every((row) => Number(row.jumlah) <= 100));
+
+  // Foto barang: catalog editors set a photo with its source; others cannot.
+  await as(ADMIN);
+  assert.equal((await one('SELECT public.simbar_can_edit_items() AS ok')).ok, true);
+  await db.query(`SELECT public.simbar_item_set_photo($1, 'https://res.cloudinary.com/demo/image/upload/v1/simbar-items/x.jpg', 'Gambar sementara SIMBAR')`, [keepId]);
+  const itemPhotoRow = await one('SELECT photo, photo_source FROM simbar.items WHERE id = $1', [keepId]);
+  assert.equal(itemPhotoRow.photo_source, 'Gambar sementara SIMBAR');
+  await assert.rejects(db.query(`SELECT public.simbar_item_set_photo($1, 'http://contoh.test/x.jpg')`, [keepId]), /https/);
+  await db.query(`SELECT public.simbar_item_set_photo($1, 'https://res.cloudinary.com/demo/image/upload/v2/simbar-items/y.jpg')`, [keepId]);
+  assert.equal((await one('SELECT photo_source FROM simbar.items WHERE id = $1', [keepId])).photo_source, 'Foto asli', 'an app upload counts as a real photo');
+  assert.ok((await one('SELECT public.simbar_item_get($1) AS g', [keepId])).g.photo.endsWith('y.jpg'));
+  await db.query('SELECT public.simbar_item_set_photo($1, NULL)', [keepId]);
+  assert.equal((await one('SELECT photo_source FROM simbar.items WHERE id = $1', [keepId])).photo_source, null);
+  await as(STAFF);
+  assert.equal((await one('SELECT public.simbar_can_edit_items() AS ok')).ok, false);
+  await assert.rejects(db.query(`SELECT public.simbar_item_set_photo($1, 'https://x.test/a.jpg')`, [keepId]), /Akses ditolak/);
+  await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

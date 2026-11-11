@@ -113,3 +113,35 @@ export function PhotoField({ label, value, onChange, allowLink = false }: {
     {problem && <p className="notice" role="alert">{problem}</p>}
   </fieldset>;
 }
+
+// ---------- Foto barang (public product photos) ----------
+// Cloudinary photos are resized on the CDN; other links are shown as they are.
+export function photoThumb(url: string, size: number) {
+  return url.includes('res.cloudinary.com/') && url.includes('/image/upload/')
+    ? url.replace('/image/upload/', `/image/upload/c_pad,b_white,w_${size},h_${size},f_auto,q_auto/`) : url;
+}
+
+export function ItemThumb({ url, name, size = 44 }: { url?: string | null; name: string; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  if (!url || broken) return <span className="item-thumb empty" style={{ width: size, height: size }} aria-hidden="true"><i className="fas fa-box" /></span>;
+  return <img className="item-thumb" src={photoThumb(url, size * 2)} alt={'Foto ' + name} width={size} height={size}
+    loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
+}
+
+// Uploads a real barang photo (shrunk to JPEG in the browser) and returns its public URL.
+export async function uploadItemPhoto(file: File): Promise<string> {
+  const body = await toJpeg(file);
+  const response = await fetch('/api/media?purpose=item', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'image/jpeg' },
+    body,
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || typeof result?.url !== 'string') throw new Error(result?.error ?? 'Foto belum bisa diunggah.');
+  return result.url;
+}
+
+export const isRealPhoto = (source?: string | null) => source === 'Foto asli';
+export const photoSourceLabel = (source?: string | null) => !source ? 'Belum ada foto'
+  : source === 'Foto asli' ? 'Foto asli' : source.startsWith('Wikimedia') ? 'Foto sementara (Wikimedia Commons)'
+  : source.startsWith('Google') ? 'Foto sementara (Google/toko online)' : source.startsWith('Gambar sementara') ? 'Gambar sementara' : 'Foto sementara (' + source + ')';
