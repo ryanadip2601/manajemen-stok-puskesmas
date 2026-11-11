@@ -863,3 +863,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 @media (min-width: 901px) {
   .app.mini .side-badge { position: absolute; top: 2px; right: 6px; min-width: 18px; padding: 0 4px; font-size: .62rem; line-height: 16px; }
 }
+
+/* ---------- Sidebar menu descriptions (toggle beside the menu search) ---------- */
+.side-search { display: flex; align-items: center; gap: 6px; }
+.side-search input { flex: 1; min-width: 0; }
+.side-desc-toggle {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(71, 85, 105, .6); border-radius: 10px;
+  background: rgba(15, 23, 42, .55); color: #64748b; cursor: pointer;
+}
+.side-desc-toggle:hover { color: #e2e8f0; }
+.side-desc-toggle[aria-pressed="true"] { color: #34d399; border-color: rgba(16, 185, 129, .6); }
+.side-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.side-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .7rem; font-weight: 400; color: #94a3b8; }
+.side-link[aria-current="page"] .side-desc { color: rgba(255, 255, 255, .8); }
+.side-nav.with-desc .side-link { padding-top: 6px; padding-bottom: 6px; }
+@media (min-width: 901px) {
+  .app.mini .side-text { display: none; }
+  .app.mini .side-desc-toggle { display: none; }
+}

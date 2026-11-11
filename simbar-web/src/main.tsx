@@ -62,7 +62,7 @@ function useTheme() {
 }
 
 type Section = 'summary' | InventoryKind | 'catalog' | 'pengajuan' | 'mutasi' | 'antrean' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
-type MenuItem = { id: Section; label: string; icon: string; color: string };
+type MenuItem = { id: Section; label: string; icon: string; color: string; desc?: string };
 type MenuGroup = { title: string; items: MenuItem[] };
 
 // The administrator sees every menu; Admin Gudang and Staf see the menus set in "Atur Menu" (Dashboard always).
@@ -72,7 +72,7 @@ function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup
     items: group.items.filter((item) => !item.right && (role === 'admin' || item.share === 'always'
       || (item.share === 'parent' && (item.rights ?? []).some((id) => shared[role].includes(id)))
       || (item.share === 'yes' && (shared[role].includes(item.id) || (item.id === 'items' && shared[role].includes('catalog'))))))
-      .map(({ id, label, icon, color }) => ({ id, label, icon, color })),
+      .map(({ id, label, icon, color, desc }) => ({ id, label, icon, color, desc })),
   })).filter((group) => group.items.length);
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
@@ -279,13 +279,15 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   }, [hasQueue, section]); // eslint-disable-line react-hooks/exhaustive-deps
   // Sidebar groups fold open and closed (remembered per browser); the search box narrows the list.
   const [menuQuery, setMenuQuery] = useState('');
+  const [showDesc, setShowDesc] = useState(() => remembered('simbar-menu-desc') !== 'off');
+  useEffect(() => { remember('simbar-menu-desc', showDesc ? 'on' : 'off'); }, [showDesc]);
   const [folded, setFolded] = useState<string[]>(() => {
     try { const saved = JSON.parse(remembered('simbar-menu-folded') ?? '[]'); return Array.isArray(saved) ? saved : []; } catch { return []; }
   });
   useEffect(() => { remember('simbar-menu-folded', JSON.stringify(folded)); }, [folded]);
   const needle = menuQuery.trim().toLowerCase();
   const shownGroups = needle
-    ? groups.map((group) => ({ ...group, items: group.items.filter((item) => (item.label + ' ' + group.title).toLowerCase().includes(needle)) }))
+    ? groups.map((group) => ({ ...group, items: group.items.filter((item) => (item.label + ' ' + group.title + ' ' + (item.desc ?? '')).toLowerCase().includes(needle)) }))
       .filter((group) => group.items.length)
     : groups;
   const isOpen = (group: MenuGroup) => !!needle || !folded.includes(group.title) || group.items.some((item) => item.id === shownSection);
@@ -340,8 +342,11 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
             if (event.key === 'Escape') setMenuQuery('');
             if (event.key === 'Enter' && shownGroups[0]) { go(shownGroups[0].items[0].id); setMenuQuery(''); }
           }} />
+        <button className="side-desc-toggle" aria-pressed={showDesc} onClick={() => setShowDesc(!showDesc)}
+          title={showDesc ? 'Sembunyikan keterangan menu' : 'Tampilkan keterangan menu'} aria-label="Keterangan menu">
+          <i className="fas fa-circle-info" aria-hidden="true" /></button>
       </div>
-      <nav className="side-nav" aria-label="Menu SIMBAR">
+      <nav className={'side-nav' + (showDesc ? ' with-desc' : '')} aria-label="Menu SIMBAR">
         {needle && !shownGroups.length && <p className="side-empty">Menu tidak ditemukan.</p>}
         {shownGroups.map((group) => <div className={'side-group' + (isOpen(group) ? '' : ' folded')} key={group.title}>
           <p className="side-group-title"><span className="side-group-name">{group.title}</span>
@@ -351,9 +356,10 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
               <i className="fas fa-chevron-down" aria-hidden="true" /></button>}</p>
           {isOpen(group) && group.items.map((item) =>
             <button key={item.id} className={'side-link c-' + item.color} aria-current={shownSection === item.id ? 'page' : undefined}
-              title={mini ? item.label : undefined} onClick={() => go(item.id)}>
+              title={mini ? item.label + (item.desc ? ' — ' + item.desc : '') : item.desc} onClick={() => go(item.id)}>
               <span className="side-icon" aria-hidden="true"><i className={'fas ' + item.icon} /></span>
-              <span className="side-label">{item.label}</span>
+              <span className="side-text"><span className="side-label">{item.label}</span>
+                {showDesc && item.desc && <span className="side-desc">{item.desc}</span>}</span>
               {item.id === 'antrean' && waiting > 0 && <span className="side-badge" aria-label={waiting + ' menunggu'}>{waiting > 99 ? '99+' : waiting}</span>}
             </button>)}
         </div>)}

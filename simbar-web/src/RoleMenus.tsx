@@ -8,14 +8,16 @@ export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 
 // `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
 export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin' | 'parent'; hint: string; right?: boolean;
   // `parent` menus have no setting of their own: they appear when the role has one of these rights.
-  rights?: MenuId[] };
+  rights?: MenuId[];
+  // Short line under the menu name in the sidebar.
+  desc?: string };
 export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
   { title: 'Menu Utama', items: [
-    { id: 'summary', label: 'Dashboard', icon: 'fa-house', color: 'blue', share: 'always', hint: 'Ringkasan stok, aset dan pengajuan.' },
-    { id: 'items', label: 'Data Barang', icon: 'fa-box', color: 'emerald', share: 'yes', hint: 'Melihat daftar barang dan stoknya.' },
+    { id: 'summary', desc: 'Ringkasan stok, aset dan pekerjaan menunggu', label: 'Dashboard', icon: 'fa-house', color: 'blue', share: 'always', hint: 'Ringkasan stok, aset dan pengajuan.' },
+    { id: 'items', desc: 'Daftar barang habis pakai dan stoknya', label: 'Data Barang', icon: 'fa-box', color: 'emerald', share: 'yes', hint: 'Melihat daftar barang dan stoknya.' },
     { id: 'catalog', label: 'Boleh ubah barang', icon: 'fa-pen-to-square', color: 'teal', share: 'yes', right: true,
       hint: 'Di Data Barang: menambah, mengubah dan menghapus barang serta jenis barang.' },
-    { id: 'pengajuan', label: 'Pengajuan', icon: 'fa-paper-plane', color: 'orange', share: 'parent', rights: ['pickup', 'permintaan', 'usulan'],
+    { id: 'pengajuan', desc: 'Ambil atau minta barang, lapor aset baru', label: 'Pengajuan', icon: 'fa-paper-plane', color: 'orange', share: 'parent', rights: ['pickup', 'permintaan', 'usulan'],
       hint: 'Buat dan pantau pengajuan; tampil jika salah satu jenis di bawah dicentang.' },
     { id: 'pickup', label: 'Ambil barang dari gudang', icon: 'fa-hand-holding', color: 'orange', share: 'yes', right: true,
       hint: 'Pengambilan barang; stok berkurang setelah disetujui.' },
@@ -25,25 +27,25 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
       hint: 'Usulan penerimaan; menjadi aset setelah disetujui.' },
   ] },
   { title: 'Gudang', items: [
-    { id: 'mutasi', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
+    { id: 'mutasi', desc: 'Catat barang masuk dan keluar gudang', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
       hint: 'Barang masuk dan keluar dalam satu halaman; tampil jika salah satu hak di bawah dicentang.' },
     { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', right: true, hint: 'Tab Masuk: mencatat barang masuk; stok bertambah.' },
     { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', right: true, hint: 'Tab Keluar: mencatat barang keluar; stok berkurang.' },
-    { id: 'antrean', label: 'Verifikasi', icon: 'fa-inbox', color: 'orange', share: 'parent', rights: ['checklist', 'verifikasi', 'usulan-admin'],
+    { id: 'antrean', desc: 'Setujui pengajuan dan laporan yang menunggu', label: 'Verifikasi', icon: 'fa-inbox', color: 'orange', share: 'parent', rights: ['checklist', 'verifikasi', 'usulan-admin'],
       hint: 'Antrean semua pengajuan yang menunggu gudang; tampil jika salah satu hak di bawah dicentang. Laporan pemeliharaan ikut masuk untuk Admin Gudang.' },
     { id: 'checklist', label: 'Pengambilan barang', icon: 'fa-clipboard-check', color: 'pink', share: 'yes', right: true, hint: 'Menyetujui pengambilan; stok langsung berkurang.' },
     { id: 'verifikasi', label: 'Permintaan barang', icon: 'fa-hand-holding-medical', color: 'orange', share: 'yes', right: true, hint: 'Menyetujui permintaan; barang baru ikut dibuat.' },
     { id: 'usulan-admin', label: 'Usulan aset', icon: 'fa-file-import', color: 'teal', share: 'yes', right: true, hint: 'Menyetujui usulan; aset baru ikut dibuat.' },
   ] },
   { title: 'Manajemen Aset', items: [
-    { id: 'aset', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },
-    { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple', share: 'yes', hint: 'Melaporkan aset rusak dan memantau perbaikannya.' },
-    { id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber', share: 'yes', hint: 'Menghitung dan memproses penyusutan aset.' },
+    { id: 'aset', desc: 'Daftar aset per ruangan dan kondisinya', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },
+    { id: 'pemeliharaan', desc: 'Laporan kerusakan dan perbaikan aset', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple', share: 'yes', hint: 'Melaporkan aset rusak dan memantau perbaikannya.' },
+    { id: 'penyusutan', desc: 'Penurunan nilai aset per tahun', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber', share: 'yes', hint: 'Menghitung dan memproses penyusutan aset.' },
   ] },
   { title: 'Administrasi', items: [
-    { id: 'laporan', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo', share: 'yes', hint: 'Laporan stok dan transaksi, termasuk ekspor CSV.' },
-    { id: 'users', label: 'Pengguna', icon: 'fa-users-gear', color: 'rose', share: 'admin', hint: 'Mengelola akun dan peran.' },
-    { id: 'menus', label: 'Atur Menu', icon: 'fa-sliders', color: 'teal', share: 'admin', hint: 'Mengatur menu tiap peran.' },
+    { id: 'laporan', desc: 'Rekap stok dan transaksi, ekspor CSV', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo', share: 'yes', hint: 'Laporan stok dan transaksi, termasuk ekspor CSV.' },
+    { id: 'users', desc: 'Akun, peran dan riwayat login', label: 'Pengguna', icon: 'fa-users-gear', color: 'rose', share: 'admin', hint: 'Mengelola akun dan peran.' },
+    { id: 'menus', desc: 'Pilih menu dan hak untuk tiap peran', label: 'Atur Menu', icon: 'fa-sliders', color: 'teal', share: 'admin', hint: 'Mengatur menu tiap peran.' },
   ] },
 ];
 
