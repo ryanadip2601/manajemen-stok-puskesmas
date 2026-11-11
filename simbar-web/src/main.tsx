@@ -14,6 +14,7 @@ import { Catalog, Movements } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
 import { Users } from './Users';
+import { DEFAULT_ROLE_MENUS, MENU_GROUPS, RoleMenusPage, type RoleMenus } from './RoleMenus';
 import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, useSeason, type SeasonChoice } from './effects';
 import { MusicMenu, useMusic, type Music } from './music';
 import { HeaderClock } from './clock';
@@ -60,44 +61,22 @@ function useTheme() {
   return [theme, () => setTheme(theme === 'dark' ? 'light' : 'dark')] as const;
 }
 
-type Section = 'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'profil';
+type Section = 'summary' | InventoryKind | 'catalog' | 'in' | 'out' | 'pickup' | 'checklist' | 'permintaan' | 'verifikasi' | 'usulan' | 'usulan-admin' | 'aset' | 'pemeliharaan' | 'penyusutan' | 'laporan' | 'users' | 'menus' | 'profil';
 type MenuItem = { id: Section; label: string; icon: string; color: string };
 type MenuGroup = { title: string; items: MenuItem[] };
 
-function menuFor(role: Summary['profile']['role']): MenuGroup[] {
-  const warehouse = role === 'admin' || role === 'admin_gudang';
-  const groups: MenuGroup[] = [{ title: 'Menu Utama', items: [
-    { id: 'summary', label: 'Dashboard', icon: 'fa-house', color: 'blue' },
-    { id: 'items', label: 'Data Barang', icon: 'fa-box', color: 'emerald' },
-  ] }];
-  if (warehouse) groups.push({ title: 'Transaksi Gudang', items: [
-    { id: 'catalog', label: 'Kelola Barang', icon: 'fa-boxes-stacked', color: 'teal' },
-    { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green' },
-    { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red' },
-    { id: 'checklist', label: 'Checklist Pengambilan', icon: 'fa-clipboard-check', color: 'pink' },
-  ] }, { title: 'Verifikasi', items: [
-    { id: 'verifikasi', label: 'Verifikasi Permintaan', icon: 'fa-hand-holding-medical', color: 'orange' },
-    { id: 'usulan-admin', label: 'Verifikasi Usulan', icon: 'fa-file-import', color: 'teal' },
-  ] });
-  groups.push({ title: 'Manajemen Aset', items: [
-    { id: 'aset', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan' },
-    { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple' },
-    ...(warehouse ? [{ id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber' } as MenuItem] : []),
-  ] }, { title: 'Pengajuan Saya', items: [
-    { id: 'pickup', label: 'Pengambilan Barang', icon: 'fa-hand-holding', color: 'orange' },
-    { id: 'permintaan', label: 'Permintaan Barang', icon: 'fa-clipboard-list', color: 'amber' },
-    { id: 'usulan', label: 'Usulan Penerimaan', icon: 'fa-file-signature', color: 'blue' },
-  ] });
-  if (role === 'admin') groups.push({ title: 'Administrasi', items: [
-    { id: 'laporan', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo' },
-    { id: 'users', label: 'Pengguna', icon: 'fa-users-gear', color: 'rose' },
-  ] });
-  return groups;
+// The administrator sees every menu; Admin Gudang and Staf see the menus set in "Atur Menu" (Dashboard always).
+function menuFor(role: Summary['profile']['role'], shared: RoleMenus): MenuGroup[] {
+  return MENU_GROUPS.map((group) => ({
+    title: group.title,
+    items: group.items.filter((item) => role === 'admin' || item.share === 'always'
+      || (item.share === 'yes' && shared[role].includes(item.id))).map(({ id, label, icon, color }) => ({ id, label, icon, color })),
+  })).filter((group) => group.items.length);
 }
 const roleIcons = { admin: 'fa-crown', admin_gudang: 'fa-warehouse', staff: 'fa-user-tie' };
 
 const SECTIONS: Section[] = ['summary', 'items', 'catalog', 'in', 'out', 'pickup', 'checklist', 'permintaan', 'verifikasi', 'usulan',
-  'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'profil'];
+  'usulan-admin', 'aset', 'pemeliharaan', 'penyusutan', 'laporan', 'users', 'menus', 'profil'];
 function linkedSection(search: string) {
   const wanted = new URLSearchParams(search).get('menu');
   return SECTIONS.find((section) => section === wanted) ?? null;
@@ -281,7 +260,11 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   const role: Role | undefined = profile?.role === 'admin' ? viewAs : profile?.role;
   const previewing = profile?.role === 'admin' && viewAs !== 'admin';
   const warehouse = role === 'admin' || role === 'admin_gudang';
-  const groups = role ? menuFor(role) : [];
+  const [roleMenus, setRoleMenus] = useState<RoleMenus>(DEFAULT_ROLE_MENUS);
+  useEffect(() => {
+    rpc<RoleMenus>('simbar_role_menus').then((saved) => { if (saved?.staff && saved?.admin_gudang) setRoleMenus(saved); }).catch(() => {});
+  }, [session, reload]);
+  const groups = role ? menuFor(role, roleMenus) : [];
   // Sidebar groups fold open and closed (remembered per browser); the search box narrows the list.
   const [menuQuery, setMenuQuery] = useState('');
   const [folded, setFolded] = useState<string[]>(() => {
@@ -392,6 +375,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
     {section === 'aset' ? <Assets warehouse={warehouse} />
       : section === 'laporan' ? <Laporan />
       : section === 'users' ? <Users selfId={selfId} />
+      : section === 'menus' ? <RoleMenusPage saved={roleMenus} onSaved={setRoleMenus} />
       : section === 'profil' ? <><ProfilePage /><DeviceApp /></>
       : section === 'penyusutan' ? <Penyusutan />
       : section === 'pemeliharaan' ? <Pemeliharaan warehouse={warehouse} />

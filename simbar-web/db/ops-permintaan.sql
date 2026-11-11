@@ -29,8 +29,8 @@ CREATE OR REPLACE FUNCTION public.simbar_permintaan_list(
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(CASE WHEN mine_only
-        THEN ARRAY['admin', 'admin_gudang', 'staff'] ELSE ARRAY['admin', 'admin_gudang'] END);
+    actor simbar.users%ROWTYPE := CASE WHEN mine_only
+        THEN simbar.require_profile(ARRAY['admin', 'admin_gudang', 'staff']) ELSE simbar.require_menu(ARRAY['verifikasi']) END;
     pattern text;
     result jsonb;
 BEGIN
@@ -96,7 +96,7 @@ BEGIN
     LEFT JOIN simbar.units u ON u.id = i.unit_id
     LEFT JOIN simbar.ruangan r ON r.id = p.ruangan_id
     LEFT JOIN simbar.users v ON v.id = p.verified_by
-    WHERE p.id = permintaan_id AND (p.user_id = actor.id OR actor.role IN ('admin', 'admin_gudang'));
+    WHERE p.id = permintaan_id AND (p.user_id = actor.id OR simbar.has_menu(actor.role, ARRAY['verifikasi']));
     IF result IS NULL THEN
         RAISE no_data_found USING MESSAGE = 'Permintaan tidak ditemukan.';
     END IF;
@@ -239,7 +239,7 @@ CREATE OR REPLACE FUNCTION public.simbar_permintaan_act(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['verifikasi']);
     request simbar.permintaan_barang%ROWTYPE;
     item_code text;
     created bigint;
@@ -281,10 +281,12 @@ BEGIN
                 RAISE check_violation USING MESSAGE = 'Lengkapi data barang baru sebelum menyetujui.';
             END IF;
             -- simbar_item_save validates the code, category, unit, price and perolehan, and logs the new barang.
+            PERFORM set_config('simbar.via', 'verifikasi', true);
             created := public.simbar_item_save(NULL, new_item->>'code', request.nama_barang, (new_item->>'category_id')::bigint,
                 (new_item->>'unit_id')::bigint, new_item->>'perolehan', (new_item->>'price')::numeric,
                 coalesce((new_item->>'minimum_stock')::integer, 5),
                 'Dari permintaan barang #' || request.kode_permintaan || '. ' || coalesce(request.keterangan, ''), NULL, request.jumlah);
+            PERFORM set_config('simbar.via', '', true);
             UPDATE simbar.permintaan_barang SET created_item_id = created WHERE id = request.id;
             SELECT code INTO item_code FROM simbar.items WHERE id = created;
             PERFORM simbar.write_log(actor.id, 'permintaan_barang_baru_approved', 'Admin ' || actor.name

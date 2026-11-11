@@ -20,7 +20,7 @@ assert.ok(sqlitePath, 'Provide the path to the SQLite backup.');
 assert.ok(!replace || apply, '--replace only works together with --apply.');
 
 // Every file is idempotent except schema.sql, which only runs when the schema is missing.
-const migrations = ['media-objects.sql', 'preview-access.sql', 'preview-inventory.sql', 'ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
+const migrations = ['media-objects.sql', 'preview-access.sql', 'preview-inventory.sql', 'ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
 const TABLES = [
   'categories', 'kategori_aset', 'ruangan', 'units', 'users', 'barang_aset', 'items', 'login_histories', 'logs',
   'sbbk_documents', 'pemeliharaan_aset', 'penyusutan_aset', 'permintaan_barang', 'permintaan_restok', 'stock_in',

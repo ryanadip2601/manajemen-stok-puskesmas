@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -395,6 +395,44 @@ try {
   assert.ok((await one(`SELECT public.simbar_activity_logs('{"action":"user_approved"}', 1) AS l`)).l.total >= 1);
   assert.ok((await one(`SELECT public.simbar_logs_clear('login_history') AS n`)).n >= 1);
   assert.equal((await one('SELECT count(*)::int AS n FROM simbar.login_histories')).n, 0);
+
+  // Configurable menus: the administrator hands menus to a role, and the menu unlocks its functions.
+  await as(STAFF);
+  const staffId = (await one('SELECT id FROM simbar.users WHERE auth_user_id = $1', [STAFF])).id;
+  const defaults = (await one('SELECT public.simbar_role_menus() AS m')).m;
+  assert.deepEqual(defaults.staff, ['aset', 'items', 'pemeliharaan', 'permintaan', 'pickup', 'usulan']);
+  assert.equal(defaults.admin_gudang.length, 13);
+  await assert.rejects(db.query(`SELECT public.simbar_role_menus_save('staff', ARRAY['in'])`), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_stock_options()'), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_penyusutan_summary(2026)'), /Akses ditolak/);
+  await as(ADMIN);
+  await assert.rejects(db.query(`SELECT public.simbar_role_menus_save('staff', ARRAY['users'])`), /tidak dikenal/);
+  await assert.rejects(db.query(`SELECT public.simbar_role_menus_save('admin', ARRAY['in'])`), /Peran tidak valid/);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', ARRAY['items', 'in', 'checklist'])`);
+  await as(STAFF);
+  assert.ok((await one('SELECT public.simbar_stock_options() AS o')).o, 'Barang Masuk unlocks the stock options');
+  await db.query(`SELECT public.simbar_stock_list('in', NULL, NULL, NULL, 1)`);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_list('out', NULL, NULL, NULL, 1)`), /Akses ditolak/);
+  const menuItem = (await one('SELECT id, stock FROM simbar.items ORDER BY id LIMIT 1'));
+  await db.query(`SELECT public.simbar_stock_save('in', NULL, $1, 2, '2026-11-11', 'uji menu')`, [menuItem.id]);
+  assert.equal(await stockOf(menuItem.id), menuItem.stock + 2, 'staff with Barang Masuk records stock in');
+  await assert.rejects(db.query(`SELECT public.simbar_stock_save('out', NULL, $1, 1, '2026-11-11', NULL)`, [menuItem.id]), /Akses ditolak/);
+  await db.query('SELECT public.simbar_pickup_list(false, $1, 1)', ['all']);
+  await db.query('SELECT public.simbar_pickup_submit($1)', [JSON.stringify([{ item_id: menuItem.id, quantity: 1, notes: 'uji menu' }])]);
+  const menuPickup = (await one(`SELECT id FROM simbar.stock_out_requests WHERE item_id = $1 AND status = 'pending' ORDER BY id DESC LIMIT 1`, [menuItem.id])).id;
+  await db.query(`SELECT public.simbar_checklist_act($1, 'approve')`, [menuPickup]);
+  assert.equal(await stockOf(menuItem.id), menuItem.stock + 1, 'checklist staff approve a pickup through the checklist');
+  assert.equal(await one(`SELECT current_setting('simbar.via', true) AS v`).then((r) => r.v ?? ''), '', 'the nested-call mark is cleared');
+  await assert.rejects(db.query(`SELECT public.simbar_item_save(NULL, 'UJI-MENU', 'Uji menu', 1, 1, 'APBD', 1, 0)`), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_permintaan_list(false, $1, $2, $3, 1)', ['all', 'all', '']), /Akses ditolak/);
+  assert.ok((await one('SELECT simbar.warehouse_people() AS p')).p.map(Number).includes(Number(staffId)), 'checklist staff get warehouse notifications');
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);
+  await as(STAFF);
+  await assert.rejects(db.query('SELECT public.simbar_stock_options()'), /Akses ditolak/);
+  await assert.rejects(db.query('SELECT public.simbar_pickup_list(false, $1, 1)', ['all']), /Akses ditolak/);
+  assert.ok(!(await one('SELECT simbar.warehouse_people() AS p')).p.map(Number).includes(Number(staffId)));
+  await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

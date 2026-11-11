@@ -27,8 +27,8 @@ CREATE OR REPLACE FUNCTION public.simbar_usulan_list(
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(CASE WHEN mine_only
-        THEN ARRAY['admin', 'admin_gudang', 'staff'] ELSE ARRAY['admin', 'admin_gudang'] END);
+    actor simbar.users%ROWTYPE := CASE WHEN mine_only
+        THEN simbar.require_profile(ARRAY['admin', 'admin_gudang', 'staff']) ELSE simbar.require_menu(ARRAY['usulan-admin']) END;
     pattern text;
     result jsonb;
 BEGIN
@@ -89,7 +89,7 @@ BEGIN
     JOIN simbar.ruangan r ON r.id = u.ruangan_id
     LEFT JOIN simbar.kategori_aset k ON k.id = u.kategori_aset_id
     LEFT JOIN simbar.users v ON v.id = u.verified_by
-    WHERE u.id = usulan_id AND (u.user_id = actor.id OR actor.role IN ('admin', 'admin_gudang'));
+    WHERE u.id = usulan_id AND (u.user_id = actor.id OR simbar.has_menu(actor.role, ARRAY['usulan-admin']));
     IF result IS NULL THEN
         RAISE no_data_found USING MESSAGE = 'Usulan tidak ditemukan.';
     END IF;
@@ -220,7 +220,7 @@ RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['usulan-admin']);
     usulan simbar.usulan_penerimaan_barang%ROWTYPE;
     received date;
     first_photo text;

@@ -795,3 +795,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
   .app.mini .role-switch { padding: 8px 10px; }
   .app.mini .role-option { padding: 6px 4px; }
 }
+
+/* ---------- Atur Menu: which menus each role gets ---------- */
+.role-menus-lead { margin: 6px 0 14px; color: var(--muted); max-width: 70ch; }
+.role-menus table { min-width: 560px; }
+.role-menus .role-col { width: 120px; text-align: center; }
+.role-menus-group th { padding-top: 14px; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface-3); }
+.role-menus-name { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; }
+.role-menus-name > i { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); font-size: .85rem; }
+.role-menus-name strong { display: block; color: var(--heading); }
+.role-menus-name small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.35; }
+.role-menus input[type="checkbox"] { width: 20px; height: 20px; accent-color: #10b981; cursor: pointer; }
+.role-menus-fixed { color: #10b981; }
+.role-menus-locked { color: var(--muted); }
+.inventory-scroll tbody th .role-menus-name { display: flex; font-size: .9rem; color: var(--text); }
+.inventory-scroll tbody th .role-menus-name > span { display: block; font-size: inherit; color: inherit; }
+.role-menus td.role-col { vertical-align: middle; }

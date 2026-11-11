@@ -9,7 +9,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(ARRAY['catalog', 'in', 'out', 'verifikasi', 'laporan']);
     RETURN jsonb_build_object(
         'categories', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name,
                 'description', description, 'items', (SELECT count(*) FROM simbar.items i WHERE i.category_id = c.id))
@@ -28,7 +28,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(ARRAY['catalog']);
     RETURN (SELECT jsonb_build_object('id', id, 'code', code, 'name', name, 'categoryId', category_id,
             'unitId', unit_id, 'description', description, 'perolehan', perolehan, 'price', price,
             'stock', stock, 'minimumStock', minimum_stock, 'barcode', barcode)
@@ -45,7 +45,8 @@ CREATE OR REPLACE FUNCTION public.simbar_item_save(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(CASE WHEN current_setting('simbar.via', true) = 'verifikasi'
+        THEN ARRAY['catalog', 'verifikasi'] ELSE ARRAY['catalog'] END);
     saved bigint;
 BEGIN
     item_code := btrim(item_code);
@@ -97,7 +98,7 @@ RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['catalog']);
     removed text;
 BEGIN
     -- Laravel cascades movements away with the barang; refuse instead so history is never lost silently.
@@ -118,7 +119,7 @@ RETURNS bigint
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['catalog']);
     saved bigint;
 BEGIN
     category_name := btrim(category_name);
@@ -150,7 +151,7 @@ RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['catalog']);
     removed text;
 BEGIN
     IF EXISTS (SELECT 1 FROM simbar.items WHERE items.category_id = simbar_category_delete.category_id) THEN
@@ -173,7 +174,7 @@ AS $function$
 DECLARE
     result jsonb;
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(CASE movement_kind WHEN 'in' THEN ARRAY['in'] ELSE ARRAY['out'] END);
     IF movement_kind IS NULL OR movement_kind NOT IN ('in', 'out') OR
        page_number IS NULL OR page_number NOT BETWEEN 1 AND 10000 THEN
         RAISE invalid_parameter_value USING MESSAGE = 'Filter barang masuk/keluar tidak valid.';
@@ -213,7 +214,8 @@ CREATE OR REPLACE FUNCTION public.simbar_stock_save(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(CASE WHEN movement_kind = 'in' THEN ARRAY['in']
+        WHEN current_setting('simbar.via', true) = 'checklist' THEN ARRAY['out', 'checklist'] ELSE ARRAY['out'] END);
     item simbar.items%ROWTYPE;
     unit_symbol text;
     previous integer := 0;
@@ -291,7 +293,7 @@ RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(CASE movement_kind WHEN 'in' THEN ARRAY['in'] ELSE ARRAY['out'] END);
     item simbar.items%ROWTYPE;
     removed integer;
     item_ref bigint;

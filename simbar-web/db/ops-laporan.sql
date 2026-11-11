@@ -18,7 +18,7 @@ DECLARE
     page_offset integer := CASE WHEN page_number = 0 THEN 0 ELSE (page_number - 1) * 15 END;
     result jsonb;
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin']);
+    PERFORM simbar.require_menu(ARRAY['laporan']);
     IF report_kind IS NULL OR report_kind NOT IN ('barang_masuk', 'barang_keluar', 'pengambilan', 'permintaan_bhp', 'usulan_aset')
        OR char_length(search_text) > 100 OR page_number IS NULL OR page_number NOT BETWEEN 0 AND 10000 THEN
         RAISE invalid_parameter_value USING MESSAGE = 'Filter laporan tidak valid.';
@@ -121,7 +121,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin']);
+    PERFORM simbar.require_menu(ARRAY['laporan']);
     IF dari IS NULL OR sampai IS NULL OR sampai < dari THEN
         RAISE invalid_parameter_value USING MESSAGE = 'Periode laporan tidak valid.';
     END IF;
@@ -142,7 +142,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin']);
+    PERFORM simbar.require_menu(ARRAY['laporan']);
     IF tahun IS NULL OR tahun NOT BETWEEN 2000 AND 2100 THEN
         RAISE invalid_parameter_value USING MESSAGE = 'Tahun laporan tidak valid.';
     END IF;

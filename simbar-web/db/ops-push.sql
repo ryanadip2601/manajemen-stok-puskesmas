@@ -49,7 +49,7 @@ CREATE OR REPLACE FUNCTION simbar.push_badge(person bigint)
 RETURNS integer
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
-    SELECT CASE WHEN u.role IN ('admin', 'admin_gudang') THEN
+    SELECT CASE WHEN u.role IN ('admin', 'admin_gudang') OR simbar.has_menu(u.role, ARRAY['checklist', 'verifikasi', 'usulan-admin']) THEN
         (SELECT count(*) FROM simbar.stock_out_requests WHERE status = 'pending')
         + (SELECT count(*) FROM simbar.permintaan_barang WHERE status IN ('pending', 'diproses'))
         + (SELECT count(*) FROM simbar.usulan_penerimaan_barang WHERE status IN ('pending', 'diproses'))
@@ -80,7 +80,8 @@ $function$;
 CREATE OR REPLACE FUNCTION simbar.warehouse_people()
 RETURNS bigint[]
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
-AS $function$ SELECT coalesce(array_agg(id), '{}') FROM simbar.users WHERE is_approved AND role IN ('admin', 'admin_gudang'); $function$;
+AS $function$ SELECT coalesce(array_agg(id), '{}') FROM simbar.users WHERE is_approved
+    AND (role IN ('admin', 'admin_gudang') OR simbar.has_menu(role, ARRAY['checklist', 'verifikasi', 'usulan-admin'])); $function$;
 
 -- Runs once per queued row when the transaction commits: sends one request to /api/notify.
 CREATE OR REPLACE FUNCTION simbar.push_dispatch()

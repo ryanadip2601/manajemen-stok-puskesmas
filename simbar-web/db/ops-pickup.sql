@@ -25,8 +25,8 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(CASE WHEN mine_only
-        THEN ARRAY['admin', 'admin_gudang', 'staff'] ELSE ARRAY['admin', 'admin_gudang'] END);
+    actor simbar.users%ROWTYPE := CASE WHEN mine_only
+        THEN simbar.require_profile(ARRAY['admin', 'admin_gudang', 'staff']) ELSE simbar.require_menu(ARRAY['checklist']) END;
     result jsonb;
 BEGIN
     IF status_filter IS NULL OR status_filter NOT IN ('all', 'pending', 'approved', 'completed', 'rejected', 'cancelled') OR
@@ -132,7 +132,7 @@ RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['checklist']);
     request simbar.stock_out_requests%ROWTYPE;
     item_name text;
     requester text;
@@ -156,10 +156,12 @@ BEGIN
 
     IF request_action IN ('approve', 'complete') THEN
         -- simbar_stock_save locks the barang, checks the stock, and logs the barang keluar.
+        PERFORM set_config('simbar.via', 'checklist', true);
         PERFORM public.simbar_stock_save('out', NULL, request.item_id, request.quantity, simbar.local_today(),
             CASE request_action WHEN 'approve' THEN 'Auto selesai dari checklist oleh ' || actor.name || ' untuk ' || requester
                 ELSE 'Pengambilan oleh ' || requester END
             || coalesce(' - ' || request.notes, ''));
+        PERFORM set_config('simbar.via', '', true);
         UPDATE simbar.stock_out_requests SET status = 'completed', pickup_date = simbar.local_today(),
             processed_by = coalesce(processed_by, actor.id), processed_at = coalesce(processed_at, simbar.local_now()),
             updated_at = simbar.local_now()

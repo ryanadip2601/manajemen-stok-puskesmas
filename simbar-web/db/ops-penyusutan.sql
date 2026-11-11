@@ -78,7 +78,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(ARRAY['penyusutan']);
     RETURN jsonb_build_object(
         'tahun', tahun_filter,
         'years', (SELECT coalesce(jsonb_agg(DISTINCT tahun ORDER BY tahun DESC), '[]') FROM simbar.penyusutan_aset),
@@ -118,7 +118,7 @@ RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['penyusutan']);
     tanggal date;
     item record;
     h jsonb;
@@ -184,7 +184,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(ARRAY['penyusutan']);
     RETURN (SELECT coalesce(jsonb_agg(row_data), '[]') FROM simbar.penyusutan_rows(coalesce(filters, '{}'), coalesce(tanggal, simbar.local_today())));
 END;
 $function$;
@@ -197,7 +197,7 @@ AS $function$
 DECLARE
     result jsonb;
 BEGIN
-    PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    PERFORM simbar.require_menu(ARRAY['penyusutan']);
     SELECT (SELECT row_data FROM simbar.penyusutan_rows('{"aktif_only": false}', simbar.local_today()) WHERE (row_data->>'id')::bigint = aset_id)
         || jsonb_build_object('riwayat', (SELECT coalesce(jsonb_agg(jsonb_build_object('tahun', tahun, 'bulan', bulan,
                 'nilai_perolehan', nilai_perolehan, 'penyusutan_periode', penyusutan_periode, 'akumulasi_awal', akumulasi_penyusutan_awal,
@@ -217,7 +217,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    actor simbar.users%ROWTYPE := simbar.require_menu(ARRAY['penyusutan']);
 BEGIN
     RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('kode_aset', a.kode_aset, 'nama_aset', a.nama_aset, 'kategori', k.nama_kategori,
             'golongan', k.golongan, 'ruangan', r.nama_ruangan, 'tahun_perolehan', a.tahun_perolehan, 'nilai_perolehan', p.nilai_perolehan,
