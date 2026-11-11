@@ -14,6 +14,7 @@ import { Catalog, Movements } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
 import { Users } from './Users';
+import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useMusic, useSeason, type SeasonChoice } from './effects';
 import './style.css';
 
 const auth = client?.auth ?? null;
@@ -41,13 +42,6 @@ async function api(session: Session, signal: AbortSignal, query?: Record<string,
 }
 
 // Light/dark theme and sidebar width are per-browser conveniences, like the old Laravel layout.
-function remembered(key: string) {
-  try { return window.localStorage.getItem(key); } catch { return null; }
-}
-function remember(key: string, value: string) {
-  try { window.localStorage.setItem(key, value); } catch { /* private mode */ }
-}
-
 type Theme = 'light' | 'dark';
 function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => remembered('simbar-theme') === 'dark' ? 'dark' : 'light');
@@ -103,6 +97,8 @@ function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [notice, setNotice] = useState('');
   const [theme, toggleTheme] = useTheme();
+  const ambience = useSeason();
+  const [music, toggleMusic] = useMusic(ambience.season ?? seasonForDate());
 
   useEffect(() => {
     const subscription = auth?.onAuthStateChange((event, next) => {
@@ -144,11 +140,14 @@ function App() {
     if (!result || result.error) setNotice('Gagal keluar. Coba lagi.');
   }
 
-  if (ready && session && !recovery && status?.approved) {
-    return <Dashboard key={session.user.id} session={session} selfId={status.id ?? null}
-      notice={notice} signOut={signOut} theme={theme} toggleTheme={toggleTheme} />;
-  }
-  return <div className="auth-shell">
+  // The canvas and cursor stay mounted in the same place while the screen below them changes.
+  return <>
+    <SeasonCanvas season={ambience.season} />
+    <CursorTrail />
+    {ready && session && !recovery && status?.approved
+      ? <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} notice={notice} signOut={signOut}
+        theme={theme} toggleTheme={toggleTheme} season={ambience.choice} setSeason={ambience.setChoice} music={music} toggleMusic={toggleMusic} />
+      : <div className="auth-shell">
     {session && <button className="logout auth-signout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>}
     <main className="auth-main">
       {notice && <p className="notice" role="alert">{notice}</p>}
@@ -159,11 +158,13 @@ function App() {
         : <PendingAccount linked={status.linked} name={status.name} />}
     </main>
     <footer className="auth-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
-  </div>;
+  </div>}
+  </>;
 }
 
-function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme }: {
+function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme, season, setSeason, music, toggleMusic }: {
   session: Session; selfId: number | null; notice: string; signOut: () => void; theme: Theme; toggleTheme: () => void;
+  season: SeasonChoice; setSeason: (choice: SeasonChoice) => void; music: boolean; toggleMusic: () => void;
 }) {
   const [state, setState] = useState<{ summary?: Summary; error?: string }>({});
   const [section, setSection] = useState<Section>('summary');
@@ -229,7 +230,12 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme }: {
     <div className="main-area">
       <header className="topbar">
         <button className="icon-button" onClick={toggleMenu} aria-label="Buka atau tutup menu"><i className="fas fa-bars" aria-hidden="true" /></button>
-        <div className="topbar-title"><h1>{current.label}</h1><p>{current.group}</p></div>
+        <div className="topbar-title"><h1 key={section}>{current.label}</h1><p>{current.group}</p></div>
+        <SeasonMenu choice={season} onChange={setSeason} />
+        <button className={'icon-button music-toggle' + (music ? ' on' : '')} onClick={toggleMusic} aria-pressed={music}
+          aria-label="Musik latar" title={music ? 'Matikan musik latar' : 'Nyalakan musik latar'}>
+          {music ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-music" aria-hidden="true" />}
+        </button>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Pakai mode terang' : 'Pakai mode gelap'}
           title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}>
           <i className={theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'} aria-hidden="true" />
@@ -243,6 +249,7 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme }: {
           <button className="secondary" onClick={() => { setState({}); setReload(reload + 1); }}>Coba lagi</button>
         </section> : !state.summary ? <p role="status">Memuat ringkasan SIMBAR…</p> : <>
     <RestockNotices />
+    <div className="page" key={section}>
     {section === 'aset' ? <Assets warehouse={warehouse} />
       : section === 'laporan' ? <Laporan />
       : section === 'users' ? <Users selfId={selfId} />
@@ -259,6 +266,7 @@ function Dashboard({ session, selfId, notice, signOut, theme, toggleTheme }: {
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
       : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} />
       : <Overview isAdmin={profile?.role === 'admin'} go={(target) => go(target as Section)} />}
+    </div>
         </>}
       </main>
       <footer className="app-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
