@@ -31,7 +31,9 @@ type Summary = {
   stats: { items: number; stock: number; assets: number; photos: number };
   photos: Photo[];
 };
+type Role = 'admin' | 'admin_gudang' | 'staff';
 const roles = { admin: 'Administrator', admin_gudang: 'Admin Gudang', staff: 'Staf' };
+const roleShort = { admin: 'Admin', admin_gudang: 'Gudang', staff: 'Staf' };
 
 async function api(session: Session, signal: AbortSignal, query?: Record<string, string>) {
   const path = query ? '/api/summary?' + new URLSearchParams(query) : '/api/summary';
@@ -274,8 +276,12 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   }, [session, reload]);
 
   const profile = state.summary?.profile;
-  const warehouse = profile?.role === 'admin' || profile?.role === 'admin_gudang';
-  const groups = profile ? menuFor(profile.role) : [];
+  // Administrators can preview the menus of the roles below them; everyone else always sees their own role.
+  const [viewAs, setViewAs] = useState<Role>('admin');
+  const role: Role | undefined = profile?.role === 'admin' ? viewAs : profile?.role;
+  const previewing = profile?.role === 'admin' && viewAs !== 'admin';
+  const warehouse = role === 'admin' || role === 'admin_gudang';
+  const groups = role ? menuFor(role) : [];
   const current = section === 'profil' ? { label: 'Profil', group: 'Akun saya' }
     : groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.title }))).find((item) => item.id === section)
       ?? { label: 'Dashboard', group: 'Menu Utama' };
@@ -289,6 +295,10 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
     setDrawer(false);
     window.scrollTo(0, 0);
   }
+  function switchRole(next: Role) {
+    setViewAs(next);
+    go('summary');
+  }
   function toggleMenu() {
     if (window.matchMedia('(max-width: 900px)').matches) setDrawer(!drawer);
     else setMini(!mini);
@@ -301,6 +311,16 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
         <div className="side-brand-text"><strong className="gradient-text">SIMBAR</strong>
           <span className="brand-full">{BRAND_FULL}</span><span>Puskesmas Karang Rejo</span></div>
       </div>
+      {profile?.role === 'admin' && <div className="role-switch" role="group" aria-label="Lihat tampilan sebagai">
+        <p className="side-group-title">Lihat sebagai</p>
+        <div className="role-switch-row">
+          {(['admin', 'admin_gudang', 'staff'] as Role[]).map((option) =>
+            <button key={option} className={'role-option role-' + option} aria-pressed={viewAs === option}
+              title={roles[option]} aria-label={roles[option]} onClick={() => switchRole(option)}>
+              <i className={'fas ' + roleIcons[option]} aria-hidden="true" /><span>{roleShort[option]}</span>
+            </button>)}
+        </div>
+      </div>}
       <nav className="side-nav" aria-label="Menu SIMBAR">
         {groups.map((group) => <div className="side-group" key={group.title}>
           <p className="side-group-title">{group.title}</p>
@@ -330,6 +350,11 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
         <button className="logout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>
       </header>
       <main className="content">
+        {previewing && <div className="preview-banner" role="status">
+          <i className="fas fa-eye" aria-hidden="true" />
+          <p>Anda melihat tampilan <strong>{roles[viewAs]}</strong>. Tindakan di halaman ini tetap memakai hak Administrator.</p>
+          <button className="secondary" onClick={() => switchRole('admin')}>Kembali ke Administrator</button>
+        </div>}
         {notice && <p className="notice" role="alert">{notice}</p>}
         {state.error ? <section className="panel">
           <h2>Ringkasan SIMBAR</h2><p className="notice" role="alert">{state.error}</p>
@@ -352,7 +377,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
       : section === 'catalog' ? <Catalog />
       : section === 'in' || section === 'out' ? <Movements key={section} kind={section} />
       : section === 'items' ? <Inventory key={section} kind={section} session={session} request={api} />
-      : <><DeviceApp compact /><Overview isAdmin={profile?.role === 'admin'} go={(target) => go(target as Section)} /></>}
+      : <><DeviceApp compact /><Overview isAdmin={role === 'admin'} go={(target) => go(target as Section)} /></>}
     </div>
         </>}
       </main>
