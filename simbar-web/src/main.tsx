@@ -14,7 +14,8 @@ import { Catalog, Movements } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
 import { Users } from './Users';
-import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useMusic, useSeason, type SeasonChoice } from './effects';
+import { CursorTrail, remember, remembered, SeasonCanvas, SeasonMenu, seasonForDate, useSeason, type SeasonChoice } from './effects';
+import { MusicMenu, useMusic, type Music } from './music';
 import { HeaderClock } from './clock';
 import { DeviceApp, forgetThisDevice, pushSupported, registerServiceWorker, setBadge } from './push';
 
@@ -109,7 +110,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [theme, toggleTheme] = useTheme();
   const ambience = useSeason();
-  const [music, toggleMusic] = useMusic(ambience.season ?? seasonForDate());
+  const music = useMusic(ambience.season ?? seasonForDate());
 
   useEffect(() => {
     const subscription = auth?.onAuthStateChange((event, next) => {
@@ -146,6 +147,8 @@ function App() {
 
   async function signOut() {
     setNotice('');
+    // Signing out stops the music; closing the app stops it on its own.
+    music.stop();
     if (status?.approved) {
       await forgetThisDevice();
       await rpc('simbar_session_event', { event: 'logout', agent: navigator.userAgent }).catch(() => {});
@@ -154,7 +157,7 @@ function App() {
     if (!result || result.error) setNotice('Gagal keluar. Coba lagi.');
   }
 
-  const controls: Ambience = { theme, toggleTheme, season: ambience.choice, setSeason: ambience.setChoice, music, toggleMusic };
+  const controls: Ambience = { theme, toggleTheme, season: ambience.choice, setSeason: ambience.setChoice, music };
   // The canvas and cursor stay mounted in the same place while the screen below them changes.
   return <>
     <SeasonCanvas season={ambience.season} />
@@ -177,18 +180,15 @@ function App() {
 }
 
 type Ambience = {
-  theme: Theme; toggleTheme: () => void; season: SeasonChoice; setSeason: (choice: SeasonChoice) => void; music: boolean; toggleMusic: () => void;
+  theme: Theme; toggleTheme: () => void; season: SeasonChoice; setSeason: (choice: SeasonChoice) => void; music: Music;
 };
 
 // Season, music and light/dark buttons, shared by the public page and the signed-in header.
 function AmbientControls({ controls }: { controls: Ambience }) {
-  const { theme, toggleTheme, season, setSeason, music, toggleMusic } = controls;
+  const { theme, toggleTheme, season, setSeason, music } = controls;
   return <>
     <SeasonMenu choice={season} onChange={setSeason} />
-    <button className={'icon-button music-toggle' + (music ? ' on' : '')} onClick={toggleMusic} aria-pressed={music}
-      aria-label="Musik latar" title={music ? 'Matikan musik latar' : 'Nyalakan musik latar'}>
-      {music ? <span className="eq" aria-hidden="true"><b /><b /><b /></span> : <i className="fas fa-music" aria-hidden="true" />}
-    </button>
+    <MusicMenu music={music} />
     <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Pakai mode terang' : 'Pakai mode gelap'}
       title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}>
       <i className={theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'} aria-hidden="true" />

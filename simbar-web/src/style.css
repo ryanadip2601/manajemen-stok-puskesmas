@@ -596,6 +596,21 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .season-list small { font-size: .72rem; color: var(--muted); }
 .season-list .season-check { color: #10b981; }
 .music-toggle.on { border-color: rgba(16, 185, 129, .5); background: rgba(16, 185, 129, .12); }
+.music-panel { min-width: 280px; max-height: min(72vh, 560px); overflow-y: auto; }
+.music-panel .music-play { justify-content: center; margin-bottom: 6px; padding: 10px; border-radius: 10px; font-weight: 650; }
+.music-panel .music-play.primary { border: 0; color: #fff; background: linear-gradient(90deg, #10b981, #0d9488); }
+.music-panel .music-play.secondary { border: 1px solid var(--border-strong); color: var(--text); background: var(--surface-3); }
+.music-panel .sound-piano { color: #6366f1; }
+.music-panel .sound-kotak { color: #ec4899; }
+.music-panel .sound-gamelan { color: #d97706; }
+.music-panel .sound-meditasi { color: #14b8a6; }
+.music-panel .sound-ombak { color: #0ea5e9; }
+.music-panel .sound-hujan { color: #3b82f6; }
+.music-panel .sound-musim { color: #a855f7; }
+.music-volume { display: flex; align-items: center; gap: 10px; margin: 6px 0 0; padding: 10px 10px 4px; border-top: 1px solid var(--border); color: var(--muted); }
+.music-volume input { flex: 1; min-width: 0; accent-color: #10b981; }
+.music-hint { margin: 6px 10px 4px; font-size: .72rem; line-height: 1.4; color: var(--muted); }
+@media (max-width: 520px) { .music-panel { right: -44px; min-width: 262px; } }
 .eq { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
 .eq b { width: 3px; height: 4px; border-radius: 2px; background: #10b981; animation: eq .9s ease-in-out infinite; }
 .eq b:nth-child(2) { animation-delay: .2s; }
