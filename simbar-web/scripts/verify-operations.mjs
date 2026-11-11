@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -487,6 +487,43 @@ try {
   assert.ok(staffChecklist.rows.every((row) => row.kind === 'pickup'));
   await as(ADMIN);
   await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);
+
+  // Laporan baru: persediaan saldo per period, mutasi and pengajuan combined, kartu stok with running saldo.
+  await as(ADMIN);
+  const today = (await one('SELECT simbar.local_today()::text AS d')).d;
+  const nowStock = (await one('SELECT coalesce(sum(stock), 0)::bigint AS s FROM simbar.items')).s;
+  const upToday = (await one(`SELECT public.simbar_laporan_persediaan('2000-01-01', $1::date, NULL, '') AS r`, [today])).r;
+  assert.equal(Number(upToday.summary.saldo_akhir), Number(nowStock), 'saldo akhir up to today equals the stock now');
+  for (const row of upToday.rows) {
+    assert.equal(Number(row.saldo_awal) + Number(row.masuk) - Number(row.keluar), Number(row.saldo_akhir), 'saldo awal + masuk - keluar = saldo akhir');
+  }
+  const busiest = (await one(`SELECT item_id AS id, min(date)::text AS first FROM simbar.stock_out GROUP BY item_id ORDER BY count(*) DESC LIMIT 1`));
+  const jan = (await one(`SELECT public.simbar_laporan_persediaan('2025-01-01', '2025-12-31', NULL, '') AS r`)).r;
+  const feb = (await one(`SELECT public.simbar_laporan_persediaan('2026-01-01', $1::date, NULL, '') AS r`, [today])).r;
+  const janRow = jan.rows.find((row) => Number(row.id) === Number(busiest.id));
+  const febRow = feb.rows.find((row) => Number(row.id) === Number(busiest.id));
+  if (janRow && febRow) assert.equal(Number(janRow.saldo_akhir), Number(febRow.saldo_awal), 'one period ends where the next begins');
+  const kartuStok = (await one(`SELECT public.simbar_kartu_stok($1, '2026-01-01', $2::date) AS k`, [busiest.id, today])).k;
+  if (febRow) {
+    assert.equal(Number(kartuStok.saldo_awal), Number(febRow.saldo_awal));
+    assert.equal(Number(kartuStok.saldo_akhir), Number(febRow.saldo_akhir), 'kartu stok ends at the persediaan saldo');
+  }
+  if (kartuStok.rows.length) assert.equal(Number(kartuStok.rows.at(-1).saldo), Number(kartuStok.saldo_akhir), 'the last line carries the closing saldo');
+  const mutasi = (await one(`SELECT public.simbar_laporan_gabungan('mutasi', '{}', 1) AS r`)).r;
+  const movements = (await one('SELECT (SELECT count(*) FROM simbar.stock_in) + (SELECT count(*) FROM simbar.stock_out) AS n')).n;
+  assert.equal(Number(mutasi.total), Number(movements), 'mutasi lists every masuk and keluar');
+  const onlyIn = (await one(`SELECT public.simbar_laporan_gabungan('mutasi', '{"jenis":"in"}', 1) AS r`)).r;
+  assert.ok(onlyIn.rows.every((row) => row.jenis === 'in'));
+  const pengajuan = (await one(`SELECT public.simbar_laporan_gabungan('pengajuan', '{}', 0) AS r`)).r;
+  const requests = (await one(`SELECT (SELECT count(*) FROM simbar.stock_out_requests) + (SELECT count(*) FROM simbar.permintaan_barang)
+      + (SELECT count(*) FROM simbar.usulan_penerimaan_barang) + (SELECT count(*) FROM simbar.pemeliharaan_aset) AS n`)).n;
+  assert.equal(Number(pengajuan.total), Number(requests));
+  assert.equal(pengajuan.rows.length, Number(requests), 'page 0 returns every row');
+  await assert.rejects(db.query(`SELECT public.simbar_laporan_gabungan('mutasi', '{"jenis":"x"}', 1)`), /tidak valid/);
+  await as(STAFF);
+  await assert.rejects(db.query(`SELECT public.simbar_laporan_persediaan('2026-01-01', '2026-01-31', NULL, '')`), /Akses ditolak/);
+  await assert.rejects(db.query(`SELECT public.simbar_kartu_stok($1, '2026-01-01', '2026-01-31')`, [busiest.id]), /Akses ditolak/);
+  await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

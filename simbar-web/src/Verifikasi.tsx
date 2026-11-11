@@ -15,7 +15,7 @@ type Row = {
 };
 type Queue = { kinds: QueueKind[]; waiting: Record<'all' | QueueKind, number>; counts: Record<Bucket, number>; total: number; rows: Row[] };
 
-const KINDS: Record<QueueKind, { label: string; icon: string; color: string }> = {
+export const KINDS: Record<QueueKind, { label: string; icon: string; color: string }> = {
   pickup: { label: 'Pengambilan', icon: 'fa-hand-holding', color: 'orange' },
   permintaan: { label: 'Permintaan', icon: 'fa-clipboard-list', color: 'amber' },
   usulan: { label: 'Usulan aset', icon: 'fa-file-signature', color: 'blue' },
@@ -23,14 +23,14 @@ const KINDS: Record<QueueKind, { label: string; icon: string; color: string }> =
 };
 const BUCKETS: [Bucket, string][] = [['menunggu', 'Menunggu'], ['revisi', 'Di pengaju (revisi)'], ['selesai', 'Selesai'],
   ['ditolak', 'Ditolak'], ['dibatalkan', 'Dibatalkan'], ['all', 'Semua']];
-const STATUS: Record<QueueKind, Record<string, string>> = {
+export const STATUS: Record<QueueKind, Record<string, string>> = {
   pickup: { pending: 'Menunggu', approved: 'Disetujui', completed: 'Selesai', rejected: 'Ditolak', cancelled: 'Dibatalkan' },
   permintaan: { pending: 'Menunggu verifikasi', diproses: 'Sedang diproses', disetujui: 'Disetujui', ditolak: 'Ditolak',
     revisi: 'Perlu revisi', tersedia: 'Barang tersedia', dibaca: 'Sudah dibaca' },
   usulan: { pending: 'Menunggu verifikasi', diproses: 'Sedang diproses', disetujui: 'Disetujui', ditolak: 'Ditolak', revisi: 'Perlu revisi' },
   pemeliharaan: { menunggu: 'Menunggu', proses: 'Diproses', selesai: 'Selesai', rusak: 'Rusak' },
 };
-const BADGE: Record<string, string> = { menunggu: 'pending', proses: 'diproses', selesai: 'completed', rusak: 'rejected' };
+export const BADGE: Record<string, string> = { menunggu: 'pending', proses: 'diproses', selesai: 'completed', rusak: 'rejected' };
 const perPage = 15;
 const number = new Intl.NumberFormat('id-ID');
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
