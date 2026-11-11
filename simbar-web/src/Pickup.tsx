@@ -64,7 +64,8 @@ function Pages({ page, total, go }: { page: number; total: number; go: (page: nu
   </nav>;
 }
 
-export function MyPickups() {
+// Opened from Pengajuan: `start` opens the form at once, `onBack` returns to the combined list.
+export function MyPickups({ start, onBack }: { start?: boolean; onBack?: () => void } = {}) {
   const [items, setItems] = useState<ItemOption[] | null>(null);
   const [lines, setLines] = useState<Line[] | null>(null);
   const [page, setPage] = useState(1);
@@ -72,6 +73,7 @@ export function MyPickups() {
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const state = useRequests(true, 'all', page, version);
+  useEffect(() => { if (start) open(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open() {
     setMessage({ text: '', ok: true });
@@ -109,6 +111,7 @@ export function MyPickups() {
   const chosen = new Set(lines?.map((line) => line.item));
 
   return <section className="panel">
+      {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Semua pengajuan</button>}
     <div className="panel-head">
       <h2>Pengambilan barang</h2>
       {!lines && <button className="primary" onClick={open}>Ajukan pengambilan</button>}

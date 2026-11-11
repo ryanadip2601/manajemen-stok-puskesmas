@@ -220,17 +220,20 @@ function RequestForm({ options, editing, busy, onSubmit, onCancel }: {
   </form>;
 }
 
-export function MyPermintaan() {
+// Opened from Pengajuan: `start` opens the form, `openId` opens one request, `onBack` returns to the combined list.
+export function MyPermintaan({ start, openId, onBack }: { start?: boolean; openId?: number; onBack?: () => void } = {}) {
   const options = useOptions();
   const [status, setStatus] = useState<'all' | Status>('all');
   const [tipe, setTipe] = useState<'all' | Tipe>('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
-  const [view, setView] = useState<{ mode: 'new' } | { mode: 'detail' | 'edit'; detail: Detail } | null>(null);
+  const [view, setView] = useState<{ mode: 'new' } | { mode: 'detail' | 'edit'; detail: Detail } | null>(start ? { mode: 'new' } : null);
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const state = useList(true, status, tipe, search, page, version);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     try {
@@ -255,6 +258,7 @@ export function MyPermintaan() {
   }
 
   return <section className="panel">
+      {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Semua pengajuan</button>}
     <div className="panel-head">
       <h2>Permintaan barang</h2>
       {!view && <button className="primary" disabled={!options} onClick={() => { setMessage({ text: '', ok: true }); setView({ mode: 'new' }); }}>Ajukan permintaan</button>}

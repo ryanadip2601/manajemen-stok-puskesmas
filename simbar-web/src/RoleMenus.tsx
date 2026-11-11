@@ -3,7 +3,7 @@ import { rpc } from './supabase';
 
 // Every menu in sidebar order. `share` marks the ones the administrator can hand to Admin Gudang and Staf;
 // Dashboard is always shown, Pengguna and Atur Menu stay with the administrator.
-export type MenuId = 'summary' | 'items' | 'catalog' | 'mutasi' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
+export type MenuId = 'summary' | 'items' | 'catalog' | 'pengajuan' | 'mutasi' | 'in' | 'out' | 'checklist' | 'verifikasi' | 'usulan-admin'
   | 'aset' | 'pemeliharaan' | 'penyusutan' | 'pickup' | 'permintaan' | 'usulan' | 'laporan' | 'users' | 'menus';
 // `right` entries are not sidebar menus but a permission inside another page (shown indented in Atur Menu).
 export type MenuEntry = { id: MenuId; label: string; icon: string; color: string; share: 'always' | 'yes' | 'admin' | 'parent'; hint: string; right?: boolean;
@@ -15,6 +15,14 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
     { id: 'items', label: 'Data Barang', icon: 'fa-box', color: 'emerald', share: 'yes', hint: 'Melihat daftar barang dan stoknya.' },
     { id: 'catalog', label: 'Boleh ubah barang', icon: 'fa-pen-to-square', color: 'teal', share: 'yes', right: true,
       hint: 'Di Data Barang: menambah, mengubah dan menghapus barang serta jenis barang.' },
+    { id: 'pengajuan', label: 'Pengajuan', icon: 'fa-paper-plane', color: 'orange', share: 'parent', rights: ['pickup', 'permintaan', 'usulan'],
+      hint: 'Buat dan pantau pengajuan; tampil jika salah satu jenis di bawah dicentang.' },
+    { id: 'pickup', label: 'Ambil barang dari gudang', icon: 'fa-hand-holding', color: 'orange', share: 'yes', right: true,
+      hint: 'Pengambilan barang; stok berkurang setelah disetujui.' },
+    { id: 'permintaan', label: 'Minta barang', icon: 'fa-clipboard-list', color: 'amber', share: 'yes', right: true,
+      hint: 'Permintaan restok atau barang baru.' },
+    { id: 'usulan', label: 'Laporkan barang baru di ruangan', icon: 'fa-file-signature', color: 'blue', share: 'yes', right: true,
+      hint: 'Usulan penerimaan; menjadi aset setelah disetujui.' },
   ] },
   { title: 'Transaksi Gudang', items: [
     { id: 'mutasi', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
@@ -31,11 +39,6 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
     { id: 'aset', label: 'Barang Aset', icon: 'fa-boxes-packing', color: 'cyan', share: 'yes', hint: 'Melihat aset; mengubahnya tetap khusus Admin Gudang.' },
     { id: 'pemeliharaan', label: 'Pemeliharaan', icon: 'fa-screwdriver-wrench', color: 'purple', share: 'yes', hint: 'Melaporkan aset rusak dan memantau perbaikannya.' },
     { id: 'penyusutan', label: 'Penyusutan', icon: 'fa-calculator', color: 'amber', share: 'yes', hint: 'Menghitung dan memproses penyusutan aset.' },
-  ] },
-  { title: 'Pengajuan Saya', items: [
-    { id: 'pickup', label: 'Pengambilan Barang', icon: 'fa-hand-holding', color: 'orange', share: 'yes', hint: 'Mengajukan pengambilan barang dari gudang.' },
-    { id: 'permintaan', label: 'Permintaan Barang', icon: 'fa-clipboard-list', color: 'amber', share: 'yes', hint: 'Meminta restok atau barang baru.' },
-    { id: 'usulan', label: 'Usulan Penerimaan', icon: 'fa-file-signature', color: 'blue', share: 'yes', hint: 'Melaporkan barang yang diterima ruangan.' },
   ] },
   { title: 'Administrasi', items: [
     { id: 'laporan', label: 'Laporan', icon: 'fa-chart-line', color: 'indigo', share: 'yes', hint: 'Laporan stok dan transaksi, termasuk ekspor CSV.' },

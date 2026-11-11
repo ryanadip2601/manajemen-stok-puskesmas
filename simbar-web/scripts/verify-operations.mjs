@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -433,6 +433,31 @@ try {
   await assert.rejects(db.query('SELECT public.simbar_pickup_list(false, $1, 1)', ['all']), /Akses ditolak/);
   assert.ok(!(await one('SELECT simbar.warehouse_people() AS p')).p.map(Number).includes(Number(staffId)));
   await as(ADMIN);
+
+  // Pengajuan saya: one list of the caller's own requests across the three kinds, with buckets.
+  await as(STAFF);
+  const mineAll = (await one(`SELECT public.simbar_my_requests('all', 'all', '', 1) AS r`)).r;
+  assert.deepEqual(mineAll.kinds, ['pickup', 'permintaan', 'usulan']);
+  assert.ok(mineAll.total > 0 && mineAll.rows.length <= 15);
+  const ownCount = (await one(`SELECT
+      (SELECT count(*) FROM simbar.stock_out_requests WHERE user_id = $1) + (SELECT count(*) FROM simbar.permintaan_barang WHERE user_id = $1)
+      + (SELECT count(*) FROM simbar.usulan_penerimaan_barang WHERE user_id = $1) AS n`, [staffId])).n;
+  assert.equal(Number(mineAll.total), Number(ownCount), 'every own request of every kind is listed');
+  const buckets = ['menunggu', 'revisi', 'disetujui', 'ditolak', 'dibatalkan'];
+  assert.equal(buckets.reduce((sum, b) => sum + Number(mineAll.counts[b]), 0), Number(mineAll.counts.all), 'every status lands in one bucket');
+  const onlyPickup = (await one(`SELECT public.simbar_my_requests('pickup', 'all', '', 1) AS r`)).r;
+  assert.ok(onlyPickup.rows.every((row) => row.kind === 'pickup'));
+  const waiting = (await one(`SELECT public.simbar_my_requests('all', 'menunggu', '', 1) AS r`)).r;
+  assert.ok(waiting.rows.every((row) => row.bucket === 'menunggu'));
+  await assert.rejects(db.query(`SELECT public.simbar_my_requests('lain', 'all', '', 1)`), /tidak valid/);
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff.filter((m) => m !== 'usulan')]);
+  await as(STAFF);
+  const withoutUsulan = (await one(`SELECT public.simbar_my_requests('all', 'all', '', 1) AS r`)).r;
+  assert.deepEqual(withoutUsulan.kinds, ['pickup', 'permintaan']);
+  assert.ok(withoutUsulan.rows.every((row) => row.kind !== 'usulan'), 'kinds without the right are hidden');
+  await as(ADMIN);
+  await db.query(`SELECT public.simbar_role_menus_save('staff', $1)`, [defaults.staff]);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
   assert.ok(logs.n >= 8, 'Every change is logged.');

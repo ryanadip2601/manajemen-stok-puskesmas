@@ -242,17 +242,20 @@ function UsulanForm({ options, editing, busy, onSubmit, onCancel }: {
   </form>;
 }
 
-export function MyUsulan({ canExport }: { canExport: boolean }) {
+// Opened from Pengajuan: `start` opens the form, `openId` opens one request, `onBack` returns to the combined list.
+export function MyUsulan({ canExport, start, openId, onBack }: { canExport: boolean; start?: boolean; openId?: number; onBack?: () => void }) {
   const options = useOptions();
   const [status, setStatus] = useState<'all' | Status>('all');
   const [room, setRoom] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
-  const [view, setView] = useState<{ mode: 'new' } | { mode: 'detail' | 'edit'; detail: Detail } | null>(null);
+  const [view, setView] = useState<{ mode: 'new' } | { mode: 'detail' | 'edit'; detail: Detail } | null>(start ? { mode: 'new' } : null);
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const state = useList(true, status, room, search, page, version);
+
+  useEffect(() => { if (openId) open(openId); }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function open(id: number) {
     try {
@@ -277,6 +280,7 @@ export function MyUsulan({ canExport }: { canExport: boolean }) {
   }
 
   return <section className="panel">
+      {onBack && <button className="secondary back-link" onClick={onBack}><i className="fas fa-arrow-left" aria-hidden="true" /> Semua pengajuan</button>}
     <div className="panel-head">
       <h2>Usulan penerimaan barang</h2>
       {!view && <button className="primary" disabled={!options} onClick={() => { setMessage({ text: '', ok: true }); setView({ mode: 'new' }); }}>Ajukan usulan</button>}

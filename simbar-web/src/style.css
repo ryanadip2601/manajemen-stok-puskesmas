@@ -819,3 +819,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .mutasi-tabs .secondary { min-height: 38px; border-color: transparent; background: transparent; }
 .mutasi-tabs .secondary[aria-pressed="true"] { background: linear-gradient(90deg, #10b981, #0d9488); box-shadow: 0 6px 12px -4px rgba(16, 185, 129, .35); }
 .role-menus-auto { color: var(--muted); }
+
+/* ---------- Pengajuan: combined list, "Buat pengajuan" choices, back link ---------- */
+.back-link { min-height: 34px; margin: 0 0 10px; padding: 5px 12px; font-size: .84rem; }
+.request-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.request-choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px; text-align: left;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.request-choice:hover { border-color: var(--a); box-shadow: 0 10px 20px -8px color-mix(in srgb, var(--a) 45%, transparent); transform: translateY(-2px); }
+.request-choice strong { color: var(--heading); font-size: 1rem; }
+.request-choice > span:last-child { color: var(--muted); font-size: .86rem; line-height: 1.45; }
+.request-choice-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; font-size: 1.1rem;
+  background: color-mix(in srgb, var(--a) 14%, transparent); color: var(--a); }
+.request-buckets { margin: 12px 0 4px; }
+.request-buckets .secondary { min-height: 36px; padding: 6px 12px; }
+.request-count { margin-left: 6px; padding: 0 7px; border-radius: 10px; background: var(--surface-3); color: var(--muted); font-size: .72rem; font-weight: 700; line-height: 18px; }
+.request-buckets .secondary[aria-pressed="true"] .request-count { background: rgba(255, 255, 255, .25); color: #fff; }
+.request-kind { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--a); font-weight: 600; font-size: .84rem; }
+.request-note { display: block; max-width: 28ch; margin-top: 4px; color: var(--muted); font-size: .76rem; line-height: 1.35; }
+.request-table td:last-child { white-space: nowrap; }
