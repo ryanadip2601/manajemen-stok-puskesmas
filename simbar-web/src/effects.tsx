@@ -257,8 +257,8 @@ export function SeasonMenu({ choice, onChange }: { choice: SeasonChoice; onChang
 type Mood = { root: number; scale: number[]; chords: number[][]; wave: OscillatorType; cutoff: number; gap: [number, number]; bell: boolean; noise: number };
 // Roots sit in the range small phone and laptop speakers can actually play.
 const MOODS: Record<Season, Mood> = {
-  hujan: { root: 220, scale: [0, 3, 5, 7, 10, 12, 15], chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], wave: 'sine', cutoff: 1800, gap: [2800, 4400], bell: false, noise: .06 },
-  pancaroba: { root: 246.94, scale: [0, 2, 3, 5, 7, 9, 10, 12], chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]], wave: 'triangle', cutoff: 2000, gap: [2400, 3800], bell: false, noise: .035 },
+  hujan: { root: 220, scale: [0, 3, 5, 7, 10, 12, 15], chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], wave: 'sine', cutoff: 1800, gap: [2800, 4400], bell: false, noise: .12 },
+  pancaroba: { root: 246.94, scale: [0, 2, 3, 5, 7, 9, 10, 12], chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]], wave: 'triangle', cutoff: 2000, gap: [2400, 3800], bell: false, noise: .07 },
   kemarau: { root: 261.63, scale: [0, 2, 4, 7, 9, 12, 14], chords: [[0, 4, 7], [5, 9, 12], [-3, 0, 4], [7, 11, 14]], wave: 'triangle', cutoff: 2400, gap: [2000, 3400], bell: false, noise: 0 },
   semi: { root: 293.66, scale: [0, 2, 4, 7, 9, 12, 14, 16], chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], wave: 'sine', cutoff: 3200, gap: [1800, 3000], bell: true, noise: 0 },
   panas: { root: 329.63, scale: [0, 2, 4, 6, 7, 9, 11, 12], chords: [[0, 4, 7, 11], [2, 6, 9], [7, 11, 14], [4, 7, 11]], wave: 'triangle', cutoff: 2800, gap: [1600, 2800], bell: false, noise: 0 },
@@ -284,7 +284,15 @@ class Ambient {
     this.ctx = new AudioContext();
     this.master = this.ctx.createGain();
     this.tone = this.ctx.createBiquadFilter();
+    // Loud by default (the device volume turns it down); the limiter keeps the boosted mix from distorting.
     const limiter = this.ctx.createDynamicsCompressor();
+    const makeup = this.ctx.createGain();
+    limiter.threshold.value = -14;
+    limiter.knee.value = 8;
+    limiter.ratio.value = 8;
+    limiter.attack.value = .004;
+    limiter.release.value = .3;
+    makeup.gain.value = 2.2;
     const delay = this.ctx.createDelay(1);
     const feedback = this.ctx.createGain();
     const wet = this.ctx.createGain();
@@ -297,7 +305,7 @@ class Ambient {
     this.tone.connect(delay);
     delay.connect(feedback).connect(delay);
     delay.connect(wet).connect(this.master);
-    this.master.connect(limiter).connect(this.ctx.destination);
+    this.master.connect(limiter).connect(makeup).connect(this.ctx.destination);
   }
 
   // Call straight from a tap or click: Safari only unlocks sound inside the gesture itself.
@@ -310,7 +318,7 @@ class Ambient {
     blip.start();
     const now = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(now);
-    this.master.gain.setTargetAtTime(.9, now, .6);
+    this.master.gain.setTargetAtTime(1, now, .4);
     this.playing = true;
     if (!this.timer) this.next();
   }
@@ -355,7 +363,7 @@ class Ambient {
       osc.frequency.value = freq;
       osc.detune.value = (Math.random() - .5) * 8;
       gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(.09, start + 1.2);
+      gain.gain.linearRampToValueAtTime(.18, start + 1.2);
       gain.gain.linearRampToValueAtTime(0, start + length);
       osc.connect(gain).connect(this.tone);
       osc.start(start);
@@ -364,7 +372,7 @@ class Ambient {
   }
 
   private pluck(freq: number, start: number) {
-    const voices = this.mood.bell ? [[1, .16], [2.76, .05]] : [[1, .16]];
+    const voices = this.mood.bell ? [[1, .34], [2.76, .1]] : [[1, .34]];
     for (const [ratio, level] of voices) {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
