@@ -67,6 +67,13 @@ export async function forgetThisDevice() {
   setBadge(0);
 }
 
+async function subscribe() {
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription()
+    ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID!) });
+  await link(subscription);
+}
+
 type DeviceState = { permission: NotificationPermission | 'unsupported'; subscribed: boolean; installable: boolean; busy: boolean; error: string };
 
 export function useDeviceApp() {
@@ -83,7 +90,25 @@ export function useDeviceApp() {
       setState((s) => ({ ...s, subscribed: !!subscription }));
       if (subscription && Notification.permission === 'granted') await link(subscription).catch(() => {});
     }).catch(() => {});
-    return () => { active = false; installListeners.delete(installable); };
+    // When the person unblocks notifications in the browser's site settings, finish the setup by itself.
+    let status: PermissionStatus | null = null;
+    const changed = () => {
+      if (!active || !pushSupported()) return;
+      const permission = Notification.permission;
+      setState((s) => ({ ...s, permission, error: '' }));
+      if (permission === 'granted') subscribe().then(() => active && setState((s) => ({ ...s, subscribed: true }))).catch(() => {});
+    };
+    navigator.permissions?.query({ name: 'notifications' as PermissionName }).then((result) => {
+      status = result;
+      result.addEventListener('change', changed);
+    }).catch(() => {});
+    window.addEventListener('focus', changed);
+    return () => {
+      active = false;
+      installListeners.delete(installable);
+      status?.removeEventListener('change', changed);
+      window.removeEventListener('focus', changed);
+    };
   }, []);
 
   async function enable() {
@@ -91,14 +116,11 @@ export function useDeviceApp() {
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setState((s) => ({ ...s, busy: false, permission,
-          error: permission === 'denied' ? 'Notifikasi diblokir. Izinkan lewat pengaturan situs di browser, lalu coba lagi.' : '' }));
+        // "denied" shows the unblock steps below instead of an error.
+        setState((s) => ({ ...s, busy: false, permission }));
         return;
       }
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription()
-        ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID!) });
-      await link(subscription);
+      await subscribe();
       setState((s) => ({ ...s, busy: false, permission, subscribed: true }));
     } catch (failure) {
       setState((s) => ({ ...s, busy: false, error: failure instanceof Error && failure.message.length < 200 ? failure.message : 'Notifikasi belum bisa diaktifkan.' }));
@@ -141,7 +163,20 @@ export function DeviceApp({ compact = false }: { compact?: boolean }) {
       {compact && <button className="icon-button" aria-label="Sembunyikan" onClick={() => { remember('simbar-push-hint', 'hidden'); setHidden(true); }}>
         <i className="fas fa-xmark" aria-hidden="true" /></button>}
     </div>
-    {ios && !standalone ? <p className="device-steps">
+    {device.permission === 'denied' ? <div className="device-blocked" role="note">
+      <p><b>Browser sedang memblokir notifikasi untuk SIMBAR.</b> Ini pengaturan browser, bukan kesalahan aplikasi. Cara membukanya:</p>
+      {/android/i.test(navigator.userAgent) ? <ol>
+        <li>Ketuk ikon <i className="fas fa-sliders" aria-label="pengaturan situs" /> atau <i className="fas fa-lock" aria-label="gembok" /> di kiri alamat <b>{location.host}</b>
+          (di aplikasi yang terpasang: tekan lama ikon SIMBAR → <b>Info aplikasi</b> → <b>Notifikasi</b>).</li>
+        <li>Pilih <b>Izin</b> → <b>Notifikasi</b> → <b>Izinkan</b>.</li>
+        <li>Kembali ke SIMBAR. Notifikasi akan aktif sendiri.</li>
+      </ol> : <ol>
+        <li>Klik ikon <i className="fas fa-sliders" aria-label="pengaturan situs" /> di kiri alamat <b>{location.host}</b> (atau buka ⋮ → <b>Setelan</b> → <b>Privasi dan keamanan</b> → <b>Setelan situs</b>).</li>
+        <li>Pada <b>Notifikasi</b>, ubah dari <b>Blokir</b> menjadi <b>Izinkan</b>.</li>
+        <li>Muat ulang halaman ini. Notifikasi akan aktif sendiri.</li>
+      </ol>}
+      <button className="secondary" onClick={() => location.reload()}><i className="fas fa-rotate-right" aria-hidden="true" /> Muat ulang</button>
+    </div> : ios && !standalone ? <p className="device-steps">
       Di iPhone/iPad: buka di <b>Safari</b>, ketuk <i className="fas fa-arrow-up-from-bracket" aria-label="Bagikan" />, pilih <b>Tambah ke Layar Utama</b>,
       lalu buka SIMBAR dari ikon di layar utama dan aktifkan notifikasi dari sana (iOS 16.4 atau lebih baru).
     </p> : device.permission === 'unsupported' ? <p className="device-steps">Browser ini belum mendukung notifikasi. Gunakan Chrome atau Edge terbaru.</p>

@@ -254,25 +254,28 @@ export function SeasonMenu({ choice, onChange }: { choice: SeasonChoice; onChang
 
 /* ---------- Background music, generated in the browser (no audio files, no licensing) ---------- */
 
-type Mood = { root: number; scale: number[]; chords: number[][]; wave: OscillatorType; cutoff: number; gap: [number, number]; bell: boolean; noise: number };
+type Mood = { root: number; scale: number[]; chords: number[][]; cutoff: number; gap: [number, number]; bell: boolean };
 // Roots sit in the range small phone and laptop speakers can actually play.
 const MOODS: Record<Season, Mood> = {
-  hujan: { root: 220, scale: [0, 3, 5, 7, 10, 12, 15], chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], wave: 'sine', cutoff: 1800, gap: [2800, 4400], bell: false, noise: .12 },
-  pancaroba: { root: 246.94, scale: [0, 2, 3, 5, 7, 9, 10, 12], chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]], wave: 'triangle', cutoff: 2000, gap: [2400, 3800], bell: false, noise: .07 },
-  kemarau: { root: 261.63, scale: [0, 2, 4, 7, 9, 12, 14], chords: [[0, 4, 7], [5, 9, 12], [-3, 0, 4], [7, 11, 14]], wave: 'triangle', cutoff: 2400, gap: [2000, 3400], bell: false, noise: 0 },
-  semi: { root: 293.66, scale: [0, 2, 4, 7, 9, 12, 14, 16], chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], wave: 'sine', cutoff: 3200, gap: [1800, 3000], bell: true, noise: 0 },
-  panas: { root: 329.63, scale: [0, 2, 4, 6, 7, 9, 11, 12], chords: [[0, 4, 7, 11], [2, 6, 9], [7, 11, 14], [4, 7, 11]], wave: 'triangle', cutoff: 2800, gap: [1600, 2800], bell: false, noise: 0 },
-  gugur: { root: 196, scale: [0, 2, 3, 7, 8, 10, 12], chords: [[0, 3, 7], [8, 12, 15], [5, 8, 12], [7, 10, 14]], wave: 'triangle', cutoff: 1600, gap: [2600, 4200], bell: false, noise: 0 },
-  salju: { root: 392, scale: [0, 2, 4, 6, 7, 11, 12, 14], chords: [[0, 4, 7, 11], [2, 6, 9], [-1, 2, 7], [4, 7, 11]], wave: 'sine', cutoff: 3600, gap: [2400, 4200], bell: true, noise: 0 },
+  hujan: { root: 220, scale: [0, 3, 5, 7, 10, 12, 15], chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], cutoff: 1500, gap: [3200, 4600], bell: false },
+  pancaroba: { root: 246.94, scale: [0, 2, 3, 5, 7, 9, 10, 12], chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]], cutoff: 1700, gap: [2800, 4200], bell: false },
+  kemarau: { root: 261.63, scale: [0, 2, 4, 7, 9, 12, 14], chords: [[0, 4, 7], [5, 9, 12], [-3, 0, 4], [7, 11, 14]], cutoff: 1900, gap: [2600, 3800], bell: false },
+  semi: { root: 293.66, scale: [0, 2, 4, 7, 9, 12, 14, 16], chords: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], cutoff: 2300, gap: [2400, 3600], bell: true },
+  panas: { root: 329.63, scale: [0, 2, 4, 6, 7, 9, 11, 12], chords: [[0, 4, 7, 11], [2, 6, 9], [7, 11, 14], [4, 7, 11]], cutoff: 2100, gap: [2400, 3400], bell: false },
+  gugur: { root: 196, scale: [0, 2, 3, 7, 8, 10, 12], chords: [[0, 3, 7], [8, 12, 15], [5, 8, 12], [7, 10, 14]], cutoff: 1400, gap: [3000, 4400], bell: false },
+  salju: { root: 392, scale: [0, 2, 4, 6, 7, 11, 12, 14], chords: [[0, 4, 7, 11], [2, 6, 9], [-1, 2, 7], [4, 7, 11]], cutoff: 2600, gap: [2800, 4400], bell: true },
 };
 const hz = (root: number, semitones: number) => root * 2 ** (semitones / 12);
+// Notes are scheduled this far ahead so a busy page (animations, charts) can never make them start late and click.
+const LOOKAHEAD = .25;
 
+// Soft piano-and-strings ambience: pure sine voices with a quiet octave for warmth, a gentle low-pass and a
+// generated room reverb. No noise layers and nothing that bends the waveform, so it stays clean when loud.
 class Ambient {
   playing = false;
   private ctx: AudioContext;
   private master: GainNode;
   private tone: BiquadFilterNode;
-  private noise: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
   private timer = 0;
   private chord = 0;
   private mood: Mood = MOODS.hujan;
@@ -281,63 +284,57 @@ class Ambient {
     // iPhones mute web audio with the silent switch unless the page asks for media playback.
     const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
     if (session) session.type = 'playback';
-    this.ctx = new AudioContext();
+    this.ctx = new AudioContext({ latencyHint: 'playback' });
     this.master = this.ctx.createGain();
     this.tone = this.ctx.createBiquadFilter();
-    // Loud by default (the device volume turns it down); the limiter keeps the boosted mix from distorting.
-    const limiter = this.ctx.createDynamicsCompressor();
-    const makeup = this.ctx.createGain();
-    limiter.threshold.value = -14;
-    limiter.knee.value = 8;
-    limiter.ratio.value = 8;
-    limiter.attack.value = .004;
-    limiter.release.value = .3;
-    makeup.gain.value = 1.25;
-    // Soft clipper: rounds off any peak that still gets through, so loud never means distorted.
-    const soft = this.ctx.createWaveShaper();
-    soft.curve = Float32Array.from({ length: 1025 }, (_, i) => Math.tanh(1.5 * (i / 512 - 1)) / Math.tanh(1.5));
-    soft.oversample = '2x';
-    const delay = this.ctx.createDelay(1);
-    const feedback = this.ctx.createGain();
-    const wet = this.ctx.createGain();
-    this.master.gain.value = 0;
     this.tone.type = 'lowpass';
-    delay.delayTime.value = .38;
-    feedback.gain.value = .32;
-    wet.gain.value = .28;
+    this.tone.Q.value = .5;
+    this.master.gain.value = 0;
+
+    const reverb = this.ctx.createConvolver();
+    reverb.buffer = this.room(2.6);
+    const wet = this.ctx.createGain();
+    wet.gain.value = .4;
+    // A light safety limiter that only touches rare peaks; the mix is levelled so it rarely has to.
+    const limiter = this.ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 4;
+    limiter.attack.value = .02;
+    limiter.release.value = .5;
+    const out = this.ctx.createGain();
+    out.gain.value = 1.9;
+
     this.tone.connect(this.master);
-    this.tone.connect(delay);
-    delay.connect(feedback).connect(delay);
-    delay.connect(wet).connect(this.master);
-    this.master.connect(limiter).connect(makeup).connect(soft).connect(this.ctx.destination);
+    this.tone.connect(reverb).connect(wet).connect(this.master);
+    this.master.connect(limiter).connect(out).connect(this.ctx.destination);
   }
 
   // Call straight from a tap or click: Safari only unlocks sound inside the gesture itself.
   play(season: Season) {
     this.setSeason(season);
     this.ctx.resume().catch(() => {});
-    const blip = this.ctx.createBufferSource();
-    blip.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
-    blip.connect(this.ctx.destination);
-    blip.start();
     const now = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(now);
-    this.master.gain.setTargetAtTime(1, now, .4);
+    this.master.gain.setValueAtTime(this.master.gain.value, now);
+    this.master.gain.linearRampToValueAtTime(1, now + 1.5);
     this.playing = true;
     if (!this.timer) this.next();
   }
 
   setSeason(season: Season) {
     this.mood = MOODS[season];
-    this.tone.frequency.setTargetAtTime(this.mood.cutoff, this.ctx.currentTime, .5);
-    this.setNoise(this.mood.noise);
+    this.tone.frequency.setTargetAtTime(this.mood.cutoff, this.ctx.currentTime, .8);
   }
 
   pause() {
     this.playing = false;
     window.clearTimeout(this.timer);
     this.timer = 0;
-    this.master.gain.setTargetAtTime(0, this.ctx.currentTime, .3);
+    const now = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setValueAtTime(this.master.gain.value, now);
+    this.master.gain.linearRampToValueAtTime(0, now + .8);
     window.setTimeout(() => { if (!this.playing) this.ctx.suspend().catch(() => {}); }, 1500);
   }
 
@@ -346,71 +343,64 @@ class Ambient {
     this.ctx.close().catch(() => {});
   }
 
+  // Decaying stereo room response for the reverb; smooth because it is filtered and faded in.
+  private room(seconds: number) {
+    const rate = this.ctx.sampleRate;
+    const length = Math.round(rate * seconds);
+    const buffer = this.ctx.createBuffer(2, length, rate);
+    for (let channel = 0; channel < 2; channel++) {
+      const data = buffer.getChannelData(channel);
+      let smooth = 0;
+      for (let i = 0; i < length; i++) {
+        smooth = smooth * .7 + (Math.random() * 2 - 1) * .3;
+        const fadeIn = Math.min(1, i / (rate * .02));
+        data[i] = smooth * fadeIn * Math.pow(1 - i / length, 3.2);
+      }
+    }
+    return buffer;
+  }
+
   private next = () => {
     const { chords, root, scale, gap } = this.mood;
     const length = (gap[0] + Math.random() * (gap[1] - gap[0])) / 1000;
-    const start = this.ctx.currentTime + .05;
-    this.pad(chords[this.chord % chords.length].map((note) => hz(root, note)), start, length * 1.6);
+    const start = this.ctx.currentTime + LOOKAHEAD;
+    this.pad(chords[this.chord % chords.length].map((note) => hz(root, note)), start, length * 1.35);
     this.chord++;
-    const notes = 1 + Math.floor(Math.random() * 3);
+    const notes = 1 + Math.floor(Math.random() * 2);
     for (let i = 0; i < notes; i++) {
-      this.pluck(hz(root * 2, scale[Math.floor(Math.random() * scale.length)]), start + .3 + Math.random() * (length - .5));
+      this.pluck(hz(root * 2, scale[Math.floor(Math.random() * scale.length)]), start + .4 + Math.random() * (length - .8));
     }
     this.timer = window.setTimeout(this.next, length * 1000);
   };
 
+  private voice(freq: number, level: number, start: number, attack: number, end: number, release: 'linear' | 'exp') {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(level, start + attack);
+    if (release === 'exp') gain.gain.setTargetAtTime(0, start + attack, (end - start - attack) / 5);
+    else gain.gain.linearRampToValueAtTime(0, end);
+    osc.connect(gain).connect(this.tone);
+    osc.start(start);
+    osc.stop(end + .05);
+  }
+
+  // Strings: slow swell and fade, the root plus a quiet octave above.
   private pad(freqs: number[], start: number, length: number) {
     for (const freq of freqs) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = this.mood.wave;
-      osc.frequency.value = freq;
-      osc.detune.value = (Math.random() - .5) * 8;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(.18, start + 1.2);
-      gain.gain.linearRampToValueAtTime(0, start + length);
-      osc.connect(gain).connect(this.tone);
-      osc.start(start);
-      osc.stop(start + length + .1);
+      this.voice(freq, .1, start, 1.8, start + length, 'linear');
+      this.voice(freq * 2, .024, start, 2.2, start + length, 'linear');
     }
   }
 
+  // Piano-like note: soft 30 ms attack and a long natural fade; bell seasons add a faint shimmer.
   private pluck(freq: number, start: number) {
-    const voices = this.mood.bell ? [[1, .34], [2.76, .1]] : [[1, .34]];
-    for (const [ratio, level] of voices) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = this.mood.bell ? 'sine' : this.mood.wave;
-      osc.frequency.value = freq * ratio;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(level, start + .015);
-      gain.gain.exponentialRampToValueAtTime(.0001, start + (this.mood.bell ? 2.6 : 1.6));
-      osc.connect(gain).connect(this.tone);
-      osc.start(start);
-      osc.stop(start + 2.8);
-    }
-  }
-
-  // Soft rain or wind noise under the music.
-  private setNoise(level: number) {
-    if (level && !this.noise) {
-      const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-      const source = this.ctx.createBufferSource();
-      const band = this.ctx.createBiquadFilter();
-      const gain = this.ctx.createGain();
-      source.buffer = buffer;
-      source.loop = true;
-      band.type = 'bandpass';
-      band.frequency.value = 1400;
-      band.Q.value = .6;
-      gain.gain.value = 0;
-      source.connect(band).connect(gain).connect(this.master);
-      source.start();
-      this.noise = { source, gain };
-    }
-    this.noise?.gain.gain.setTargetAtTime(level, this.ctx.currentTime, .8);
+    const tail = this.mood.bell ? 3.4 : 2.6;
+    this.voice(freq, .14, start, .03, start + tail, 'exp');
+    this.voice(freq * 2, .035, start, .03, start + tail * .6, 'exp');
+    if (this.mood.bell) this.voice(freq * 3, .012, start, .03, start + tail * .4, 'exp');
   }
 }
 

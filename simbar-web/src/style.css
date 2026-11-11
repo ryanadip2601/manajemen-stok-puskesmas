@@ -656,6 +656,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .device-icon i { animation: bell-ring 3.5s ease-in-out infinite; transform-origin: 50% 10%; }
 @keyframes bell-ring { 0%, 80%, 100% { transform: rotate(0); } 84% { transform: rotate(14deg); } 88% { transform: rotate(-12deg); } 92% { transform: rotate(8deg); } 96% { transform: rotate(-4deg); } }
 .device-steps { margin: 8px 0 0; font-size: .88rem; color: var(--muted); }
+.device-blocked { padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warn-fg) 35%, transparent); border-radius: 14px; background: var(--warn-bg); color: var(--text); font-size: .9rem; }
+.device-blocked p { margin: 0 0 6px; }
+.device-blocked ol { margin: 0 0 12px; padding-left: 20px; }
+.device-blocked li + li { margin-top: 4px; }
+.device-blocked i { color: var(--heading); }
 .device-steps b { color: var(--heading); }
 
 /* ---------- Clocks ---------- */
