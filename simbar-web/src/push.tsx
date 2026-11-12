@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
 import { remember, remembered } from './effects';
 import { rpc } from './supabase';
+import { playTing, setTingEnabled, tingEnabled } from './ting';
+
+// Profil page: switch the in-app "ting" on or off and try it.
+function TingSetting() {
+  const [on, setOn] = useState(tingEnabled);
+  return <div className="ting-setting">
+    <label className="ting-toggle">
+      <input type="checkbox" checked={on} onChange={(event) => { setOn(event.target.checked); setTingEnabled(event.target.checked); if (event.target.checked) playTing('test'); }} />
+      <span><b>Bunyi "ting" di dalam aplikasi</b><small>Berbunyi saat ada notifikasi atau antrean baru selama SIMBAR sedang dibuka.</small></span>
+    </label>
+    <button type="button" className="secondary" onClick={() => playTing('test')}><i className="fas fa-volume-high" aria-hidden="true" /> Coba bunyi</button>
+  </div>;
+}
 
 // Installable app (PWA), push notifications on this device and the number on the app icon.
 
@@ -189,6 +202,7 @@ export function DeviceApp({ compact = false }: { compact?: boolean }) {
         <i className="fas fa-download" aria-hidden="true" /> Instal aplikasi</button>}
     </div>}
     {device.error && <p className="notice" role="alert">{device.error}</p>}
+    {!compact && <TingSetting />}
     {!compact && !ios && !device.installable && !standalone && <p className="device-steps">
       Untuk memasang: di Chrome/Edge buka menu <b>⋮</b> lalu pilih <b>Instal SIMBAR</b> (laptop) atau <b>Tambahkan ke layar utama</b> (Android).
     </p>}

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { BRAND_FULL, LogoMark } from './logo';
-import { client, rpc } from './supabase';
+import { client, getRemember, rpc, setRemember } from './supabase';
 
 const auth = client?.auth ?? null;
 const text = (data: FormData, name: string) => String(data.get(name) ?? '').trim();
@@ -28,6 +28,7 @@ export function AuthScreen() {
     const data = new FormData(event.currentTarget);
     setBusy(true);
     setMessage({ text: '', ok: true });
+    setRemember(data.get('remember') === 'on');
     try {
       const result = await auth.signInWithPassword({ email: text(data, 'email').toLowerCase(), password: String(data.get('password')) });
       if (result.error) setMessage({ text: authError(result.error, 'Tidak bisa masuk. Periksa email dan password SIMBAR.'), ok: false });
@@ -93,7 +94,11 @@ export function AuthScreen() {
       <input id="email" type="email" name="email" autoComplete="username" placeholder="nama@contoh.id" required />
       <label htmlFor="password">Password</label>
       <input id="password" type="password" name="password" autoComplete="current-password" required />
-      <Notice message={!auth ? { text: 'Login belum dikonfigurasi.', ok: false } : message} />
+      <label className="remember">
+        <input type="checkbox" name="remember" defaultChecked={getRemember()} />
+        <span>Ingat saya <small>(tetap masuk walau aplikasi ditutup)</small></span>
+      </label>
+      <Notice message={!auth ?{ text: 'Login belum dikonfigurasi.', ok: false } : message} />
       <button className="primary" type="submit" disabled={busy || !auth}>{busy ? 'Memeriksa…' : 'Masuk'}</button>
       <div className="auth-links">
         <button type="button" className="link" onClick={() => switchTo('forgot')}>Lupa password?</button>

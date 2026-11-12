@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Inventory, type InventoryKind } from './Inventory';
 import { AsetMenu, type AsetTab } from './AsetMenu';
@@ -21,6 +21,7 @@ import { MusicMenu, useMusic, type Music } from './music';
 import { HeaderClock } from './clock';
 import { BRAND_FULL, LogoMark } from './logo';
 import { DeviceApp, forgetThisDevice, pushSupported, registerServiceWorker, setBadge } from './push';
+import { playTing } from './ting';
 
 registerServiceWorker();
 import './style.css';
@@ -242,6 +243,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
     if (window.location.search) window.history.replaceState(null, '', '/');
     if (pushSupported()) rpc<number>('simbar_my_badge').then(setBadge).catch(() => {});
     const opened = (event: MessageEvent) => {
+      if (event.data?.type === 'simbar-push') { playTing('push'); return; }
       if (event.data?.type !== 'simbar-open') return;
       const target = linkedSection(new URL(event.data.url).search);
       if (target) go(target);
@@ -273,7 +275,14 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   const groups = role ? menuFor(role, roleMenus) : [];
   const hasQueue = groups.some((group) => group.items.some((item) => item.id === 'antrean'));
   const [waiting, setWaiting] = useState(0);
-  const refreshWaiting = () => { rpc<number>('simbar_queue_waiting').then((n) => setWaiting(Number(n) || 0)).catch(() => {}); };
+  const lastWaiting = useRef<number | null>(null);
+  const refreshWaiting = () => { rpc<number>('simbar_queue_waiting').then((n) => {
+    const count = Number(n) || 0;
+    // Ting when something new joins the queue (not on the first check after opening the app).
+    if (lastWaiting.current !== null && count > lastWaiting.current) playTing('queue');
+    lastWaiting.current = count;
+    setWaiting(count);
+  }).catch(() => {}); };
   useEffect(() => {
     if (!hasQueue) return;
     refreshWaiting();

@@ -215,6 +215,13 @@ a { color: var(--link); }
 .login-card .primary { width: 100%; margin-top: 22px; min-height: 48px; }
 .login-card .notice { background: rgba(244, 63, 94, .15); color: #fda4af !important; }
 .login-card .success { background: rgba(16, 185, 129, .15); color: #6ee7b7 !important; }
+.login-card label.remember { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; min-height: 44px; font-weight: 500; cursor: pointer; }
+.login-card label.remember input { width: 20px; height: 20px; padding: 0; flex: none; accent-color: #10b981; }
+.login-card label.remember small { color: #94a3b8; font-weight: 400; }
+.ting-setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(148, 163, 184, .25); }
+.ting-toggle { display: flex; align-items: flex-start; gap: 10px; flex: 1 1 240px; cursor: pointer; }
+.ting-toggle input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: #10b981; }
+.ting-toggle small { display: block; opacity: .75; font-size: .85rem; margin-top: 2px; }
 .auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 14px; }
 .login-card .link { color: #34d399; }
 .login-layout.single { gap: 0; }

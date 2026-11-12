@@ -263,7 +263,7 @@
 
                 <div class="flex items-center justify-between mb-6">
                     <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" name="remember" class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-800">
+                        <input type="checkbox" name="remember" checked class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-800">
                         <span class="ml-2 text-sm text-slate-400">Ingat saya</span>
                     </label>
                     <a href="{{ route('password.request') }}" class="text-sm text-blue-400 hover:text-blue-300 transition">
