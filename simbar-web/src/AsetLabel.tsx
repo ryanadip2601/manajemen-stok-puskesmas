@@ -10,7 +10,7 @@ type Suspicious = { id: number; kode: string; nama: string; jumlah: number; tahu
 type RegisterStatus = { total: number; tanpa_register: number; ditahan: number; unit_tanpa_register: number };
 type LabelAsset = { id: number; kode: string; nama: string; merk: string | null; jumlah: number; register: string | null;
   tahun: number | null; ruangan: string | null; kategori: string | null };
-type Option = { id: number; name: string };
+type Option = { id: number; name: string; active?: boolean; assets?: number };
 type Label = { asset: LabelAsset; unit: string };
 type Progress = { total: number; difoto: number; ruangan: { id: number; nama: string; total: number; difoto: number }[] };
 
@@ -185,7 +185,9 @@ export function AsetLabel() {
       <p>Satu label untuk setiap unit. Kertas stiker A4 isi 24 (3 × 8, ukuran 64 × 34 mm). Pindai QR dengan HP untuk membuka aset di SIMBAR.</p>
       <form className="asset-filter" onSubmit={apply}>
         <label>Ruangan<select name="ruangan" defaultValue=""><option value="">Semua ruangan</option>
-          {options?.rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+          {/* Only rooms that hold assets: empty rooms and the system archive have nothing to label. */}
+          {options?.rooms.filter((room) => (room.assets ?? 0) > 0).map((room) => <option key={room.id} value={room.id}>
+            {room.name} ({number.format(room.assets ?? 0)}){room.active === false ? ' · nonaktif' : ''}</option>)}</select></label>
         <label>Kategori<select name="kategori" defaultValue=""><option value="">Semua kategori</option>
           {options?.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label>Cari<input name="search" type="search" maxLength={100} placeholder="Nama atau kode aset" /></label>
