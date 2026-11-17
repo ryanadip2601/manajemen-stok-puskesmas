@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { rpc } from './supabase';
+import { zoomProps } from './media';
 import { golonganLabels, hasilLabels, jenisLabels, kalibrasiStatus, kondisiLabels, pemeliharaanStatus, statusLabels } from './Aset';
 
 // Kartu aset: what a scanned label shows before signing in (a phone camera opening /?aset=<id> in the browser).
@@ -9,6 +10,7 @@ type Card = {
   id: number; kode_aset: string; nama_aset: string; merk: string | null; kategori: string; golongan: string; ruangan: string;
   kondisi: string; butuh_perbaikan: boolean; status_aset: string; jumlah: number; tahun_perolehan: number | null;
   nomor_register: string | null; spesifikasi: string | null; ukuran_konstruksi: string | null;
+  foto: boolean; contoh: string | null; // contoh: kode of the same-name asset whose photo stands in
   kalibrasi_tanggal: string | null; kalibrasi_hasil: string | null; kalibrasi_berikutnya: string | null; kalibrasi_status: string | null;
   pemeliharaan: { id: number; tanggal: string; jenis: string; status: string; hasil: string | null }[];
 };
@@ -16,6 +18,28 @@ type Card = {
 const number = new Intl.NumberFormat('id-ID');
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
 const date = (value: string | null) => value ? dateFormat.format(new Date(value.slice(0, 10))) : '—';
+
+// The card's photo comes from /api/media?aset=<id>, which serves the asset's own photo or the example photo, without a session.
+function PublicPhoto({ card }: { card: Card }) {
+  const [broken, setBroken] = useState(false);
+  const has = card.foto || !!card.contoh;
+  const caption = card.foto ? card.nama_aset : `${card.nama_aset} · foto contoh dari ${card.contoh}`;
+  const src = `/api/media?aset=${card.id}`;
+  return <div className="asset-photo-panel wide">
+    <div className="asset-photo-frame">
+      {has && !broken ? <span className={card.contoh ? 'contoh-wrap big' : undefined}>
+          <img className={'item-thumb zoomable asset-photo-big' + (card.contoh ? ' contoh' : '')} src={src + '&w=640'} alt={'Foto ' + card.nama_aset}
+            width={240} height={240} onError={() => setBroken(true)} {...zoomProps({ url: src, alt: 'Foto ' + card.nama_aset, caption })} />
+          {card.contoh && <span className="contoh-badge">Contoh</span>}</span>
+        : <span className="item-thumb empty asset-photo-big" style={{ width: 240, height: 240 }} title="Belum difoto"><i className="fas fa-camera" /></span>}
+    </div>
+    <div className="asset-photo-info">
+      {card.foto && !broken ? <p className="item-photo-source real"><i className="fas fa-circle-check" aria-hidden="true" /> Foto asli</p>
+        : card.contoh && !broken ? <p className="item-photo-source">Belum difoto. Ini foto contoh dari aset {card.contoh} dengan nama yang sama.</p>
+        : <p className="item-photo-source">Belum difoto.</p>}
+    </div>
+  </div>;
+}
 
 function Kalibrasi({ card }: { card: Card }) {
   if (!card.kalibrasi_status) return <>—</>;
@@ -53,6 +77,7 @@ export function AsetPublik({ asetId, onScan, onBack, onLogin }: { asetId: number
       : !card ? <p role="status">Memuat aset…</p>
       : <>
         <h2>{card.nama_aset}</h2>
+        <PublicPhoto card={card} />
         <dl className="detail-list">
           {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
           {card.spesifikasi && <div className="wide"><dt>Spesifikasi</dt><dd>{card.spesifikasi}</dd></div>}

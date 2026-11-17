@@ -54,6 +54,10 @@ BEGIN
             'kondisi', a.kondisi, 'butuh_perbaikan', a.butuh_perbaikan, 'status_aset', a.status_aset, 'jumlah', a.jumlah,
             'tahun_perolehan', a.tahun_perolehan, 'nomor_register', a.nomor_register,
             'spesifikasi', a.spesifikasi, 'ukuran_konstruksi', a.ukuran_konstruksi,
+            -- Whether a photo exists (the picture itself comes through /api/media?aset=<id>) and, without one,
+            -- the kode of the same-name asset whose photo is shown as an example.
+            'foto', coalesce(a.foto, '') <> '',
+            'contoh', CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id)->>'kode' END,
             'kalibrasi_tanggal', kal.tanggal, 'kalibrasi_hasil', kal.hasil,
             'kalibrasi_berikutnya', (kal.tanggal + interval '1 year')::date,
             'kalibrasi_status', CASE WHEN kal.tanggal IS NULL THEN CASE WHEN k.nama_kategori ILIKE 'alat kesehatan%' THEN 'belum' END
@@ -80,9 +84,31 @@ BEGIN
 END;
 $function$;
 
+-- The photo shown on the public asset card: the asset's own photo, or the example photo from a same-name asset.
+-- Only ever the photo of the asset asked for, never another reference; NULL when there is nothing to show.
+CREATE OR REPLACE FUNCTION public.simbar_aset_public_foto(aset_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE
+    reference text;
+BEGIN
+    SELECT CASE WHEN coalesce(a.foto, '') <> '' THEN a.foto ELSE simbar.aset_contoh(a.nama_aset, a.id)->>'foto' END
+    INTO reference
+    FROM simbar.barang_aset a WHERE a.id = aset_id;
+    IF reference IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN (SELECT jsonb_build_object('publicId', cloudinary_public_id, 'format', format, 'size', file_size)
+        FROM simbar.media_objects WHERE legacy_reference = reference);
+END;
+$function$;
+
 REVOKE ALL ON FUNCTION public.simbar_public_dashboard() FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.simbar_public_dashboard() TO anon, authenticated;
 REVOKE ALL ON FUNCTION public.simbar_aset_public(bigint) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.simbar_aset_public(bigint) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.simbar_aset_public_foto(bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.simbar_aset_public_foto(bigint) TO anon, authenticated;
 
 COMMIT;

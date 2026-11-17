@@ -209,6 +209,7 @@ function PublicHome({ notice, controls, aset }: { notice: string; controls: Ambi
     return () => document.removeEventListener('keydown', escape);
   }, [login]);
   return <div className="public-shell">
+    <PhotoViewer />
     <header className="topbar public-topbar">
       <div className="public-brand">
         <span className="logo-tile small" aria-hidden="true"><LogoMark /></span>

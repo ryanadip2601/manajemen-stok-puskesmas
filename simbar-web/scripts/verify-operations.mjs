@@ -307,9 +307,13 @@ try {
   const card = (await one('SELECT public.simbar_aset_public($1) AS a', [asetId])).a;
   assert.deepEqual([card.kode_aset, card.nama_aset, card.ruangan, card.kondisi, card.kalibrasi_status, card.kalibrasi_hasil],
     [nextCode, 'Tensimeter Uji', 'Ruang Uji 2', 'rusak_ringan', 'berlaku', 'layak']);
-  for (const key of ['harga_perolehan', 'nilai_residu', 'sumber_dana', 'foto', 'contoh', 'keterangan', 'created_by', 'created_by_name']) {
+  for (const key of ['harga_perolehan', 'nilai_residu', 'sumber_dana', 'keterangan', 'created_by', 'created_by_name']) {
     assert.ok(!(key in card), key + ' must not be on the public card');
   }
+  // The card only says whether a photo exists; the picture itself is resolved by id, never by reference.
+  assert.deepEqual([card.foto, card.contoh], [true, null]);
+  assert.equal((await one('SELECT public.simbar_aset_public_foto($1) AS f', [asetId])).f.size, 2000, 'the public photo is the asset photo');
+  assert.equal((await one('SELECT public.simbar_aset_public_foto(0) AS f')).f, null);
   assert.equal(card.pemeliharaan.length, 3);
   assert.deepEqual(Object.keys(card.pemeliharaan[0]).sort(), ['hasil', 'id', 'jenis', 'status', 'tanggal'], 'no teknisi or deskripsi on the public card');
   await assert.rejects(db.query('SELECT public.simbar_aset_public(0)'), /Aset tidak ditemukan/);

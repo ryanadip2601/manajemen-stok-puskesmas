@@ -31,6 +31,22 @@ export async function rpc(request, name, params) {
   return { data: await result.json() };
 }
 
+// Calls a SIMBAR database function open to anyone (granted to anon), for the public asset card.
+export async function publicRpc(name, params) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !supabaseKey) return { response: error(503, 'Koneksi SIMBAR belum tersedia.') };
+  const result = await fetch(new URL('/rest/v1/rpc/' + name, supabaseUrl), {
+    method: 'POST',
+    headers: { apikey: supabaseKey, authorization: 'Bearer ' + supabaseKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+    redirect: 'error',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!result.ok) return { response: error(502, 'Data SIMBAR belum bisa dimuat.') };
+  return { data: await result.json() };
+}
+
 function cloudinary() {
   const cloud = process.env.CLOUDINARY_CLOUD_NAME?.trim();
   const apiKey = process.env.CLOUDINARY_API_KEY?.trim();

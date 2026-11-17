@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { MAX_PHOTO_BYTES, error, headers, readPhoto, readPhotoThumb, rpc, uploadItemPhoto, uploadPhoto } from './_shared.js';
+import { MAX_PHOTO_BYTES, error, headers, publicRpc, readPhoto, readPhotoThumb, rpc, uploadItemPhoto, uploadPhoto } from './_shared.js';
 
 export default { fetch: handler };
 
 // GET  /api/media?ref=<reference>  returns a photo the caller may see.
+// GET  /api/media?aset=<id>        returns the photo on that asset's public card (no sign-in; a scanned label).
 // POST /api/media (image/jpeg body) uploads a photo and returns its "media:" reference.
 async function handler(request) {
   try {
@@ -16,6 +17,8 @@ async function handler(request) {
 }
 
 async function read(request) {
+  const asetId = new URL(request.url).searchParams.get('aset');
+  if (asetId !== null) return await readAssetPhoto(request, asetId);
   const reference = new URL(request.url).searchParams.get('ref') ?? '';
   if (!/^(media:[0-9a-f]{64}|uploads\/[A-Za-z0-9_\-/.]{1,250})$/.test(reference) || reference.includes('..')) {
     return error(400, 'Referensi foto tidak valid.');
@@ -26,6 +29,19 @@ async function read(request) {
   // ?w=96|160|320|640 returns a small square version for lists and detail views.
   const width = Number(new URL(request.url).searchParams.get('w') ?? 0);
   return width ? readPhotoThumb(data, width) : readPhoto(data);
+}
+
+// The public card's photo: the database decides which photo belongs to the asset (its own or the example),
+// so the caller can never name a reference. Browsers may keep it for an hour.
+async function readAssetPhoto(request, asetId) {
+  if (!/^[1-9]\d{0,15}$/.test(asetId)) return error(400, 'Aset tidak valid.');
+  const { data, response } = await publicRpc('simbar_aset_public_foto', { aset_id: Number(asetId) });
+  if (response) return response;
+  if (!data) return error(404, 'Aset ini belum difoto.');
+  const width = Number(new URL(request.url).searchParams.get('w') ?? 0);
+  const photo = width ? await readPhotoThumb(data, width) : await readPhoto(data);
+  if (!photo.ok) return photo;
+  return new Response(photo.body, { headers: { ...Object.fromEntries(photo.headers), 'Cache-Control': 'public, max-age=3600' } });
 }
 
 async function upload(request) {
