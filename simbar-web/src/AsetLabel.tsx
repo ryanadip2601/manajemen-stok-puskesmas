@@ -76,7 +76,8 @@ export function AsetLabel() {
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [withKop, setWithKop] = useState(() => { try { return localStorage.getItem('simbar-label-kop') === 'ya'; } catch { return false; } });
+  // The kop is on unless this device turned it off (sticker sheets).
+  const [withKop, setWithKop] = useState(() => { try { return localStorage.getItem('simbar-label-kop') !== 'tidak'; } catch { return true; } });
   const [printSettings] = usePrintSettings();
   const perSheet = withKop ? PER_SHEET_KOP : PER_SHEET;
 
