@@ -41,7 +41,9 @@ async function readAssetPhoto(request, asetId) {
   const width = Number(new URL(request.url).searchParams.get('w') ?? 0);
   const photo = width ? await readPhotoThumb(data, width) : await readPhoto(data);
   if (!photo.ok) return photo;
-  return new Response(photo.body, { headers: { ...Object.fromEntries(photo.headers), 'Cache-Control': 'public, max-age=3600' } });
+  return new Response(photo.body, { headers: {
+    'Content-Type': photo.headers.get('content-type'), 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=3600',
+  } });
 }
 
 async function upload(request) {
