@@ -440,8 +440,9 @@ try {
   await db.query(`SELECT public.simbar_user_set_password($1, 'passwordbaru123')`, [newbie.id]);
   assert.equal((await one('SELECT encrypted_password FROM auth.users WHERE id = $1', [NEWBIE])).encrypted_password, 'hash:passwordbaru123');
   await assert.rejects(db.query(`SELECT public.simbar_user_set_password($1, 'short')`, [newbie.id]), /minimal 8/);
-  const busyUser = (await one('SELECT user_id AS id FROM simbar.stock_in WHERE user_id <> $1 LIMIT 1', [admin.id])).id;
-  await assert.rejects(db.query(`SELECT public.simbar_user_act($1, 'delete')`, [busyUser]), /transaksi stok/);
+  // A backup without stock movements has no such user; the rest of the suite still runs.
+  const busyUser = (await one('SELECT user_id AS id FROM simbar.stock_in WHERE user_id <> $1 LIMIT 1', [admin.id]))?.id;
+  if (busyUser) await assert.rejects(db.query(`SELECT public.simbar_user_act($1, 'delete')`, [busyUser]), /transaksi stok/);
   await db.query(`SELECT public.simbar_user_act($1, 'delete')`, [newbie.id]);
   assert.equal((await one('SELECT count(*)::int AS n FROM auth.users WHERE id = $1', [NEWBIE])).n, 0, 'deleting a user removes the login');
   assert.ok((await one(`SELECT public.simbar_user_detail($1) AS d`, [admin.id])).d.stats.total_activities > 0);
@@ -625,6 +626,23 @@ try {
   await db.query('SELECT public.simbar_aset_fix_jumlah($1, 1, 2019)', [asetRow.id]);
   assert.equal(Number((await one('SELECT jumlah FROM simbar.barang_aset WHERE id = $1', [asetRow.id])).jumlah), 1);
   assert.equal(Number((await one('SELECT public.simbar_aset_register_assign() AS r')).r.aset), 1, 'after the fix it gets a number');
+  // Smaller doubts: many units, expensive units, or equipment a room has one of. "Sudah benar" keeps them off the list.
+  const doubt = async () => (await one('SELECT public.simbar_aset_suspicious() AS s')).s.find((row) => Number(row.id) === Number(asetRow.id));
+  const asetBefore = await one('SELECT nama_aset, harga_perolehan FROM simbar.barang_aset WHERE id = $1', [asetRow.id]);
+  await db.query(`UPDATE simbar.barang_aset SET jumlah = 25, jumlah_dicek = false, nama_aset = 'Kursi Uji', harga_perolehan = 100000 WHERE id = $1`, [asetRow.id]);
+  assert.equal((await doubt()).alasan, 'banyak');
+  await db.query(`UPDATE simbar.barang_aset SET jumlah = 3, harga_perolehan = 7000000 WHERE id = $1`, [asetRow.id]);
+  assert.equal((await doubt()).alasan, 'mahal');
+  await db.query(`UPDATE simbar.barang_aset SET nama_aset = 'Mesin Absen Uji', harga_perolehan = 100000 WHERE id = $1`, [asetRow.id]);
+  assert.equal((await doubt()).alasan, 'tunggal');
+  await db.query('SELECT public.simbar_aset_jumlah_ok($1)', [asetRow.id]);
+  assert.equal(await doubt(), undefined, 'confirmed jumlah is not listed again');
+  await db.query(`UPDATE simbar.barang_aset SET jumlah = 2019 WHERE id = $1`, [asetRow.id]);
+  assert.equal((await doubt()).alasan, 'tahun', 'jumlah > 100 is always listed');
+  await assert.rejects(db.query('SELECT public.simbar_aset_jumlah_ok($1)', [asetRow.id]), /harus diperbaiki dulu/);
+  await db.query('SELECT public.simbar_aset_fix_jumlah($1, 1, 2019)', [asetRow.id]);
+  assert.equal(await doubt(), undefined);
+  await db.query('UPDATE simbar.barang_aset SET nama_aset = $2, harga_perolehan = $3 WHERE id = $1', [asetRow.id, asetBefore.nama_aset, asetBefore.harga_perolehan]);
   const labels = (await one(`SELECT public.simbar_aset_labels('{}') AS l`)).l;
   assert.ok(labels.length > 0 && labels.every((row) => Number(row.jumlah) <= 100));
 

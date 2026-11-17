@@ -77,7 +77,27 @@ BEGIN
 END;
 $function$;
 
--- Assets whose jumlah looks like a typo (e.g. the year typed into jumlah). They are skipped by numbering and labels.
+-- "Sudah benar" on the jumlah check: the asset is not listed again (a corrected jumlah also sets it).
+ALTER TABLE simbar.barang_aset ADD COLUMN IF NOT EXISTS jumlah_dicek boolean NOT NULL DEFAULT false;
+
+-- Why an asset's jumlah deserves a look, or NULL when it looks fine:
+--   tahun   jumlah > 100: the year typed into jumlah (always listed; skipped by numbering and labels)
+--   banyak  20 or more units of one asset in one room
+--   mahal   3 or more units at Rp 5 juta or more each (the total price may have been multiplied)
+--   tunggal 3 or more units of equipment a room normally has one of (mesin absen, server, brankas, dental chair, ...)
+CREATE OR REPLACE FUNCTION simbar.jumlah_alasan(a simbar.barang_aset)
+RETURNS text
+LANGUAGE sql IMMUTABLE
+AS $function$
+    SELECT CASE WHEN a.jumlah > 100 THEN 'tahun'
+                WHEN a.jumlah_dicek THEN NULL
+                WHEN a.jumlah >= 20 THEN 'banyak'
+                WHEN a.jumlah >= 3 AND coalesce(a.harga_perolehan, 0) >= 5000000 THEN 'mahal'
+                WHEN a.jumlah >= 3 AND a.nama_aset ~* '(absen|server|brankas|dental chair|hematolog|anali[sz]er|analyzer|proyektor|projector|lcd|sterili[sz]ator|autoclave|lemari obat putar|mesin pembuat|doppler|cctv|dvr|modem|microtoi|ukuran tinggi|kulkas|lemari es|freezer|\mac\M|air conditioner|genset|mesin cuci|televisi|\mtv\M|\musg\M|\mekg\M|\mecg\M|nebuli[sz]er|centrifuge|mikroskop|microscope|rontgen|x-ray|dispenser)' THEN 'tunggal'
+           END;
+$function$;
+
+-- Assets whose jumlah looks wrong, with the reason. Those with jumlah > 100 are skipped by numbering and labels.
 CREATE OR REPLACE FUNCTION public.simbar_aset_suspicious()
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
@@ -85,8 +105,30 @@ AS $function$
 BEGIN
     PERFORM simbar.require_profile(ARRAY['admin', 'admin_gudang']);
     RETURN (SELECT coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'kode', a.kode_aset, 'nama', a.nama_aset, 'jumlah', a.jumlah,
-            'tahun', a.tahun_perolehan, 'ruangan', r.nama_ruangan) ORDER BY a.jumlah DESC, a.id), '[]'::jsonb)
-        FROM simbar.barang_aset a LEFT JOIN simbar.ruangan r ON r.id = a.ruangan_id WHERE a.jumlah > 100);
+            'tahun', a.tahun_perolehan, 'ruangan', r.nama_ruangan, 'harga', a.harga_perolehan, 'register', a.nomor_register,
+            'alasan', simbar.jumlah_alasan(a))
+            ORDER BY CASE simbar.jumlah_alasan(a) WHEN 'tahun' THEN 0 WHEN 'mahal' THEN 1 WHEN 'tunggal' THEN 2 ELSE 3 END, a.jumlah DESC, a.id), '[]'::jsonb)
+        FROM simbar.barang_aset a LEFT JOIN simbar.ruangan r ON r.id = a.ruangan_id WHERE simbar.jumlah_alasan(a) IS NOT NULL);
+END;
+$function$;
+
+-- "Sudah benar": keep the jumlah and stop listing the asset. Not for jumlah > 100, which always needs a fix.
+CREATE OR REPLACE FUNCTION public.simbar_aset_jumlah_ok(aset_id bigint)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE
+    actor simbar.users%ROWTYPE := simbar.require_profile(ARRAY['admin', 'admin_gudang']);
+    aset simbar.barang_aset%ROWTYPE;
+BEGIN
+    SELECT * INTO aset FROM simbar.barang_aset WHERE id = aset_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE no_data_found USING MESSAGE = 'Aset tidak ditemukan.';
+    ELSIF aset.jumlah > 100 THEN
+        RAISE check_violation USING MESSAGE = 'Jumlah lebih dari 100 harus diperbaiki dulu.';
+    END IF;
+    UPDATE simbar.barang_aset SET jumlah_dicek = true, updated_at = simbar.local_now() WHERE id = aset_id;
+    PERFORM simbar.write_log(actor.id, 'aset_jumlah_checked', actor.name || ' memastikan jumlah aset ' || aset.kode_aset || ' (' || aset.jumlah || ') sudah benar');
 END;
 $function$;
 
@@ -111,7 +153,7 @@ BEGIN
     UPDATE simbar.barang_aset SET jumlah = new_jumlah, tahun_perolehan = coalesce(new_tahun, tahun_perolehan),
         -- A register range made for the old jumlah no longer fits.
         nomor_register = CASE WHEN new_jumlah <> aset.jumlah AND position('-' in coalesce(nomor_register, '')) > 0 THEN NULL ELSE nomor_register END,
-        updated_at = simbar.local_now()
+        jumlah_dicek = true, updated_at = simbar.local_now()
     WHERE id = aset_id;
     PERFORM simbar.write_log(actor.id, 'aset_jumlah_fixed', actor.name || ' memperbaiki jumlah aset ' || aset.kode_aset || ' dari '
         || aset.jumlah || ' menjadi ' || new_jumlah || coalesce(', tahun ' || new_tahun, ''));
@@ -230,5 +272,8 @@ BEGIN
 END;
 $grants$;
 REVOKE ALL ON FUNCTION simbar.register_last(bigint) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION simbar.jumlah_alasan(simbar.barang_aset) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.simbar_aset_jumlah_ok(bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.simbar_aset_jumlah_ok(bigint) TO authenticated;
 
 COMMIT;

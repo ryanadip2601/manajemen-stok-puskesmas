@@ -14,7 +14,7 @@ AS $function$
     SELECT jsonb_build_object('foto', a.foto, 'kode', a.kode_aset)
     FROM simbar.barang_aset a
     WHERE a.id <> except_id AND coalesce(a.foto, '') <> ''
-      AND regexp_replace(lower(a.nama_aset), '\s+', ' ', 'g') = regexp_replace(lower(btrim(nama)), '\s+', ' ', 'g')
+      AND regexp_replace(lower(btrim(a.nama_aset)), '\s+', ' ', 'g') = regexp_replace(lower(btrim(nama)), '\s+', ' ', 'g')
     ORDER BY a.foto_diambil_at DESC NULLS LAST, a.updated_at DESC NULLS LAST, a.id DESC
     LIMIT 1;
 $function$;

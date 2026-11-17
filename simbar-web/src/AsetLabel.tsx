@@ -8,7 +8,12 @@ import { PrintKop, printWhenReady, usePrintSettings } from './cetak';
 // (3) print small labels (A4 sticker sheet, 3 x 8) with QR code, kode aset, nomor register, name and ruangan.
 // Scanning the QR opens the asset in SIMBAR. "Cetak dengan kop" puts the report kop above the labels
 // (plain paper or PDF, 3 x 7 per sheet) using the same kop settings as the reports.
-type Suspicious = { id: number; kode: string; nama: string; jumlah: number; tahun: number | null; ruangan: string | null };
+type Suspicious = { id: number; kode: string; nama: string; jumlah: number; tahun: number | null; ruangan: string | null;
+  harga: number | null; register: string | null; alasan: 'tahun' | 'banyak' | 'mahal' | 'tunggal' };
+const alasanLabels: Record<Suspicious['alasan'], string> = {
+  tahun: 'Tahun terketik di jumlah', banyak: '≥ 20 unit', mahal: '≥ 3 unit, harga ≥ Rp 5 juta', tunggal: 'Barang biasanya 1 unit',
+};
+const rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 type RegisterStatus = { total: number; tanpa_register: number; ditahan: number; unit_tanpa_register: number };
 type LabelAsset = { id: number; kode: string; nama: string; merk: string | null; jumlah: number; register: string | null;
   tahun: number | null; ruangan: string | null; kategori: string | null };
@@ -144,19 +149,26 @@ export function AsetLabel() {
 
     {!!suspicious?.length && <section className="panel">
       <h2><i className="fas fa-triangle-exclamation" aria-hidden="true" /> Periksa jumlah aset</h2>
-      <p>{suspicious.length} aset tercatat dengan jumlah lebih dari 100. Kebanyakan tahun perolehan terketik di kolom jumlah.
-        Perbaiki dulu; aset ini tidak diberi nomor dan tidak dicetak labelnya sampai jumlahnya wajar.</p>
+      <p>{suspicious.length} aset jumlahnya perlu dilihat: {number.format(suspicious.filter((row) => row.alasan === 'tahun').length)} dengan
+        jumlah lebih dari 100 (biasanya tahun perolehan terketik di kolom jumlah — aset ini tidak diberi nomor dan tidak dicetak labelnya
+        sampai diperbaiki), sisanya jumlah besar, harga per unit tinggi, atau barang yang biasanya cuma satu. Satu label dicetak untuk
+        setiap unit, jadi jumlah yang salah membuat label berlebih. Isi jumlah yang benar lalu <strong>Simpan</strong>, atau tekan
+        <strong> Sudah benar</strong> bila memang sebanyak itu.</p>
       <div className="inventory-scroll" tabIndex={0} role="region" aria-label="Aset dengan jumlah mencurigakan">
         <table><thead><tr><th scope="col">Aset</th><th scope="col">Ruangan</th><th scope="col" className="num">Jumlah tercatat</th>
-          <th scope="col">Perbaikan</th></tr></thead>
+          <th scope="col">Kenapa</th><th scope="col">Perbaikan</th></tr></thead>
           <tbody>{suspicious.map((row) => <tr key={row.id}>
-            <th scope="row"><strong>{row.nama}</strong><span>{row.kode}</span></th><td>{row.ruangan ?? '-'}</td>
-            <td className="num">{number.format(row.jumlah)}</td>
+            <th scope="row"><strong>{row.nama}</strong><span>{row.kode}{row.register ? ' · No. Reg ' + row.register : ''}</span></th>
+            <td>{row.ruangan ?? '-'}</td>
+            <td className="num">{number.format(row.jumlah)}{row.harga ? <span className="cell-note">@ {rupiah.format(Number(row.harga))}</span> : null}</td>
+            <td><span className={'badge' + (row.alasan === 'tahun' ? ' rejected' : ' pending')}>{alasanLabels[row.alasan]}</span></td>
             <td><form className="fix-row" onSubmit={(event) => fix(event, row)}>
-              <label>Jumlah<input name="jumlah" type="number" min={1} max={10000} required defaultValue={1} /></label>
+              <label>Jumlah<input name="jumlah" type="number" min={1} max={10000} required defaultValue={row.alasan === 'tahun' ? 1 : row.jumlah} /></label>
               <label>Tahun<input name="tahun" type="number" min={1950} max={2100}
                 defaultValue={row.tahun ?? (row.jumlah >= 1950 && row.jumlah <= 2100 ? row.jumlah : '')} /></label>
               <button className="primary" type="submit" disabled={busy}>Simpan</button>
+              {row.alasan !== 'tahun' && <button className="secondary" type="button" disabled={busy}
+                onClick={() => run(() => rpc('simbar_aset_jumlah_ok', { aset_id: row.id }), () => `Jumlah ${row.kode} ditandai sudah benar.`)}>Sudah benar</button>}
             </form></td>
           </tr>)}</tbody></table>
       </div>
