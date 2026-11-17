@@ -1017,6 +1017,9 @@ body.printing-labels .label-print { display: block; }
   }
   .label-sheet:last-child { break-after: auto; }
   .label-sheet .label-card { border: 0; border-radius: 0; }
+  /* With the kop: the report kop spans the top row (plain paper), the 3 x 7 labels sit below it. */
+  .label-sheet.with-kop { grid-template-rows: auto; padding-top: 10mm; }
+  .label-sheet.with-kop .print-kop { grid-column: 1 / -1; margin: 0 0 6mm; color: #000; }
   .label-card.empty { visibility: hidden !important; }
 }
 

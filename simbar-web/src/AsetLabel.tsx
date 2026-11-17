@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import qrcode from 'qrcode-generator';
 import { rpc } from './supabase';
+import { PrintKop, printWhenReady, usePrintSettings } from './cetak';
 
 // Nomor & label: (1) fix assets whose jumlah looks like a typo, (2) give every asset a nomor register,
 // (3) print small labels (A4 sticker sheet, 3 x 8) with QR code, kode aset, nomor register, name and ruangan.
-// Scanning the QR opens the asset in SIMBAR.
+// Scanning the QR opens the asset in SIMBAR. "Cetak dengan kop" puts the report kop above the labels
+// (plain paper or PDF, 3 x 7 per sheet) using the same kop settings as the reports.
 type Suspicious = { id: number; kode: string; nama: string; jumlah: number; tahun: number | null; ruangan: string | null };
 type RegisterStatus = { total: number; tanpa_register: number; ditahan: number; unit_tanpa_register: number };
 type LabelAsset = { id: number; kode: string; nama: string; merk: string | null; jumlah: number; register: string | null;
@@ -16,6 +18,7 @@ type Progress = { total: number; difoto: number; ruangan: { id: number; nama: st
 
 const number = new Intl.NumberFormat('id-ID');
 const PER_SHEET = 24;
+const PER_SHEET_KOP = 21; // the kop takes the top row
 // Labels always point at the main address, whichever address the sheet is printed from, so phones open the installed app.
 const LABEL_ORIGIN = 'https://simbarkro.brey26.id';
 
@@ -73,6 +76,9 @@ export function AsetLabel() {
   const [message, setMessage] = useState({ text: '', ok: true });
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [withKop, setWithKop] = useState(() => { try { return localStorage.getItem('simbar-label-kop') === 'ya'; } catch { return false; } });
+  const [printSettings] = usePrintSettings();
+  const perSheet = withKop ? PER_SHEET_KOP : PER_SHEET;
 
   useEffect(() => {
     rpc<Suspicious[]>('simbar_aset_suspicious').then(setSuspicious).catch((error: Error) => setMessage({ text: error.message, ok: false }));
@@ -93,8 +99,9 @@ export function AsetLabel() {
     document.body.classList.add('printing-labels');
     const done = () => setPrinting(false);
     window.addEventListener('afterprint', done, { once: true });
-    const timer = window.setTimeout(() => window.print(), 250);
-    return () => { window.clearTimeout(timer); window.removeEventListener('afterprint', done); document.body.classList.remove('printing-labels'); };
+    // With the kop, wait for its logos before opening the preview.
+    const cancel = printWhenReady('.label-print img');
+    return () => { cancel(); window.removeEventListener('afterprint', done); document.body.classList.remove('printing-labels'); };
   }, [printing]);
 
   async function run(action: () => Promise<unknown>, text: (result: unknown) => string) {
@@ -121,9 +128,14 @@ export function AsetLabel() {
     setFilters(Object.fromEntries([...new FormData(event.currentTarget).entries()].map(([k, v]) => [k, String(v).trim()])));
   }
   const saveHeader = (value: string) => { setHeader(value); try { localStorage.setItem('simbar-label-header', value); } catch { /* private mode */ } };
+  const saveKop = (on: boolean) => {
+    setWithKop(on);
+    setSkip((value) => Math.min(value, (on ? PER_SHEET_KOP : PER_SHEET) - 1));
+    try { localStorage.setItem('simbar-label-kop', on ? 'ya' : 'tidak'); } catch { /* private mode */ }
+  };
 
   const labels: Label[] = (assets ?? []).filter((a) => picked.has(a.id)).flatMap((asset) => unitsOf(asset).map((unit) => ({ asset, unit })));
-  const sheets = Math.ceil((labels.length + skip) / PER_SHEET);
+  const sheets = Math.ceil((labels.length + skip) / perSheet);
   const allPicked = !!assets?.length && picked.size === assets.length;
 
   return <>
@@ -182,7 +194,8 @@ export function AsetLabel() {
 
     <section className="panel">
       <h2><i className="fas fa-tags" aria-hidden="true" /> Cetak label aset</h2>
-      <p>Satu label untuk setiap unit. Kertas stiker A4 isi 24 (3 × 8, ukuran 64 × 34 mm). Pindai QR dengan HP untuk membuka aset di SIMBAR.</p>
+      <p>Satu label untuk setiap unit. Kertas stiker A4 isi 24 (3 × 8, ukuran 64 × 34 mm), atau 21 per lembar bila dicetak dengan kop.
+        Pindai QR dengan HP untuk membuka aset di SIMBAR.</p>
       <form className="asset-filter" onSubmit={apply}>
         <label>Ruangan<select name="ruangan" defaultValue=""><option value="">Semua ruangan</option>
           {/* Only rooms that hold assets: empty rooms and the system archive have nothing to label. */}
@@ -195,8 +208,10 @@ export function AsetLabel() {
       </form>
       <div className="record-form label-options">
         <label>Tulisan atas label<input value={header} maxLength={40} onChange={(event) => saveHeader(event.target.value)} /></label>
-        <label>Lewati label di awal lembar (kertas bekas)<input type="number" min={0} max={PER_SHEET - 1} value={skip}
-          onChange={(event) => setSkip(Math.max(0, Math.min(PER_SHEET - 1, Number(event.target.value) || 0)))} /></label>
+        <label>Lewati label di awal lembar (kertas bekas)<input type="number" min={0} max={perSheet - 1} value={skip}
+          onChange={(event) => setSkip(Math.max(0, Math.min(perSheet - 1, Number(event.target.value) || 0)))} /></label>
+        <label className="inline wide"><input type="checkbox" checked={withKop} onChange={(event) => saveKop(event.target.checked)} />
+          Cetak dengan kop Puskesmas di atas tiap lembar (kertas biasa / PDF, 3 × 7 label). Kop mengikuti pengaturan cetak di menu Laporan.</label>
       </div>
       {!assets ? <p role="status">Memuat aset…</p> : !assets.length ? <p role="status">Tidak ada aset pada filter ini.</p> : <>
         <div className="report-actions label-actions">
@@ -225,9 +240,10 @@ export function AsetLabel() {
     </section>
 
     {printing && createPortal(<div className="label-print" aria-hidden="true">
-      {Array.from({ length: sheets }, (_, sheet) => <div className="label-sheet" key={sheet}>
-        {Array.from({ length: PER_SHEET }, (_, slot) => {
-          const index = sheet * PER_SHEET + slot - skip;
+      {Array.from({ length: sheets }, (_, sheet) => <div className={'label-sheet' + (withKop ? ' with-kop' : '')} key={sheet}>
+        {withKop && <PrintKop settings={printSettings} />}
+        {Array.from({ length: perSheet }, (_, slot) => {
+          const index = sheet * perSheet + slot - skip;
           const label = index >= 0 ? labels[index] : undefined;
           return label ? <LabelCard key={slot} label={label} header={header} /> : <div key={slot} className="label-card empty" />;
         })}

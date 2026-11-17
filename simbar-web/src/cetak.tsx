@@ -118,10 +118,10 @@ export function PrintSigns({ settings }: { settings: PrintSettings }) {
 export const xlsxTitle = (title: string, subtitle?: string) => [...kopLines(loadPrint()), '', title, ...(subtitle ? [subtitle] : [])];
 
 // Opens the print preview once the logos on the print sheet have loaded. Returns a function that cancels it.
-export function printWhenReady() {
+export function printWhenReady(selector = '.print-area img') {
   let timer = 0;
   let cancelled = false;
-  const images = [...document.querySelectorAll<HTMLImageElement>('.print-area img')];
+  const images = [...document.querySelectorAll<HTMLImageElement>(selector)];
   Promise.all(images.map((image) => image.complete ? null : new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; })))
     .then(() => { if (!cancelled) timer = window.setTimeout(() => window.print(), 150); });
   return () => { cancelled = true; window.clearTimeout(timer); };
