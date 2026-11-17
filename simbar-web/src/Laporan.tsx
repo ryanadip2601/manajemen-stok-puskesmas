@@ -5,6 +5,7 @@ import { rpc } from './supabase';
 import { ItemPicker, type PickItem } from './ItemPicker';
 import { BADGE, KINDS, STATUS, type QueueKind } from './Verifikasi';
 import { downloadXlsx } from './xlsx';
+import { PrintKop, PrintSettingsForm, PrintSigns, printWhenReady, usePrintSettings, xlsxTitle, type PrintSettings } from './cetak';
 
 // Laporan: Persediaan (saldo per periode), Mutasi (masuk + keluar), Pengajuan (all request kinds) and Kartu Stok.
 // Every report shares one column list for the screen table, Excel, CSV and the printed page (kop + tanda tangan).
@@ -29,51 +30,12 @@ const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 
 const range = (from: string, to: string) => from === to ? day(from, longDate) : `${day(from, longDate)} s.d. ${day(to, longDate)}`;
 const show = (cell: Cell, num?: boolean) => cell === null || cell === '' ? '-' : num && typeof cell === 'number' ? number.format(cell) : cell;
 
-// ---------- Kop and tanda tangan, set once per browser ----------
-type PrintSettings = { kop: string; kota: string; kiriJabatan: string; kiriNama: string; kiriNip: string; kananJabatan: string; kananNama: string; kananNip: string };
-const defaultPrint: PrintSettings = {
-  kop: 'PEMERINTAH KOTA BALIKPAPAN\nDINAS KESEHATAN\nUPTD PUSKESMAS KARANG REJO', kota: 'Balikpapan',
-  kiriJabatan: 'Mengetahui,\nKepala UPTD Puskesmas Karang Rejo', kiriNama: '', kiriNip: '',
-  kananJabatan: 'Pengurus Barang', kananNama: '', kananNip: '',
-};
-function loadPrint(): PrintSettings {
-  try { return { ...defaultPrint, ...JSON.parse(localStorage.getItem('simbar-cetak') ?? '{}') }; } catch { return defaultPrint; }
-}
-
-function PrintSettingsForm({ value, onChange }: { value: PrintSettings; onChange: (next: PrintSettings) => void }) {
-  const field = (key: keyof PrintSettings, label: string, multi = false) => <label className={multi ? 'wide' : undefined}>{label}
-    {multi ? <textarea rows={3} value={value[key]} onChange={(event) => onChange({ ...value, [key]: event.target.value })} />
-      : <input value={value[key]} maxLength={120} onChange={(event) => onChange({ ...value, [key]: event.target.value })} />}</label>;
-  return <details className="print-settings">
-    <summary><i className="fas fa-print" aria-hidden="true" /> Pengaturan cetak: kop dan tanda tangan</summary>
-    <div className="record-form">
-      {field('kop', 'Kop (satu baris per baris teks)', true)}
-      {field('kota', 'Kota pada tanggal tanda tangan')}
-      <span />
-      {field('kiriJabatan', 'Tanda tangan kiri: jabatan', true)}
-      {field('kananJabatan', 'Tanda tangan kanan: jabatan', true)}
-      {field('kiriNama', 'Kiri: nama')}
-      {field('kananNama', 'Kanan: nama')}
-      {field('kiriNip', 'Kiri: NIP')}
-      {field('kananNip', 'Kanan: NIP')}
-      <p className="wide muted">Tersimpan di browser ini. Kosongkan nama untuk diisi tangan setelah dicetak.</p>
-    </div>
-  </details>;
-}
-
 // The printed page: kop, title, the full table and the signatures. Hidden on screen.
 function PrintSheet({ settings, title, subtitle, columns, rows, footer, before }: {
   settings: PrintSettings; title: string; subtitle: string; columns: Column[]; rows: Row[]; footer?: Cell[]; before?: ReactNode;
 }) {
-  const sign = (jabatan: string, nama: string, nip: string, dated: boolean) => <div className="print-sign">
-    <p>{dated ? `${settings.kota}, ${day(today, longDate)}` : ' '}</p>
-    {jabatan.split('\n').map((line, i) => <p key={i}>{line}</p>)}
-    <p className="print-sign-space" />
-    <p><strong>{nama || '(.......................................)'}</strong></p>
-    <p>NIP. {nip || '.......................................'}</p>
-  </div>;
   return <div className="print-area" aria-hidden="true">
-    <header className="print-kop">{settings.kop.split('\n').filter(Boolean).map((line, i) => <p key={i}>{line}</p>)}</header>
+    <PrintKop settings={settings} />
     <h1 className="print-title">{title}</h1>
     <p className="print-subtitle">{subtitle}</p>
     {before}
@@ -83,8 +45,7 @@ function PrintSheet({ settings, title, subtitle, columns, rows, footer, before }
         <td key={column.label} className={column.num ? 'num' : undefined}>{show(column.value(row, index), column.num)}</td>)}</tr>)}</tbody>
       {footer && <tfoot><tr>{footer.map((cell, i) => <td key={i} className={columns[i]?.num ? 'num' : undefined}>{show(cell, columns[i]?.num)}</td>)}</tr></tfoot>}
     </table>
-    <div className="print-signs">{sign(settings.kiriJabatan, settings.kiriNama, settings.kiriNip, false)}
-      {sign(settings.kananJabatan, settings.kananNama, settings.kananNip, true)}</div>
+    <PrintSigns settings={settings} />
   </div>;
 }
 
@@ -95,8 +56,8 @@ function usePrint() {
     if (!rows) return;
     const done = () => setRows(null);
     window.addEventListener('afterprint', done, { once: true });
-    const timer = window.setTimeout(() => window.print(), 150);
-    return () => { window.clearTimeout(timer); window.removeEventListener('afterprint', done); };
+    const cancel = printWhenReady();
+    return () => { cancel(); window.removeEventListener('afterprint', done); };
   }, [rows]);
   return [rows, setRows] as const;
 }
@@ -104,7 +65,7 @@ function usePrint() {
 function exportFile(kind: 'xlsx' | 'csv', file: string, title: string, subtitle: string, columns: Column[], rows: Row[], footer?: Cell[]) {
   const data = rows.map((row, index) => columns.map((column) => column.value(row, index)));
   if (kind === 'csv') downloadCsv(`${file}-${stamp()}.csv`, columns.map((c) => c.label), footer ? [...data, footer] : data);
-  else downloadXlsx(`${file}-${stamp()}.xlsx`, { title: [...loadPrint().kop.split('\n').filter(Boolean), title, subtitle],
+  else downloadXlsx(`${file}-${stamp()}.xlsx`, { title: xlsxTitle(title, subtitle),
     header: columns.map((c) => c.label), rows: data, footer: footer ? [footer] : undefined });
 }
 
@@ -139,8 +100,7 @@ function Pages({ page, total, go }: { page: number; total: number; go: (page: nu
 
 export function Laporan() {
   const [tab, setTab] = useState<Tab>('persediaan');
-  const [settings, setSettings] = useState<PrintSettings>(loadPrint);
-  const save = (next: PrintSettings) => { setSettings(next); try { localStorage.setItem('simbar-cetak', JSON.stringify(next)); } catch { /* private mode */ } };
+  const [settings, save] = usePrintSettings();
   return <section className="panel report-panel">
     <h2>Laporan</h2>
     <p>Pilih laporan, atur periode, lalu cetak dengan kop dan tanda tangan atau unduh sebagai Excel.</p>

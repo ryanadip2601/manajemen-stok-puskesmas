@@ -15,13 +15,15 @@ type Row = {
   id: number; code: string; name: string; merk: string | null; jumlah: number; kondisi: string; status: string; repair: boolean;
   year: number | null; price: number | null; register: string | null; category: string; room: string; has_photo: boolean;
   photo: string | null; contoh: Contoh;
+  kalibrasi_tanggal: string | null; kalibrasi_hasil: string | null; kalibrasi_berikutnya: string | null; kalibrasi_status: string | null;
 };
 type Summary = { total: number; baik: number; rusak_ringan: number; rusak_berat: number; butuh_perbaikan: number; nilai: number };
-type Page = { summary: Summary; total: number; rows: Row[] };
+type KalibrasiCounts = { perlu: number; lewat: number; segera: number; belum: number; berlaku: number };
+type Page = { summary: Summary; kalibrasi: KalibrasiCounts; total: number; rows: Row[] };
 type Detail = Record<string, string | number | boolean | null> & {
   id: number; kode_aset: string; nama_aset: string; foto: string | null; kategori: string; ruangan: string;
   contoh: Contoh; foto_diambil_at: string | null; foto_diambil_oleh_name: string | null;
-  pemeliharaan: { id: number; tanggal: string; jenis: string; status: string; teknisi: string; deskripsi: string }[];
+  pemeliharaan: { id: number; tanggal: string; jenis: string; status: string; teknisi: string; deskripsi: string; hasil: string | null }[];
 };
 
 const perPage = 15;
@@ -29,12 +31,17 @@ const number = new Intl.NumberFormat('id-ID');
 const rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
 export const kondisiLabels: Record<string, string> = { baik: 'Baik', rusak_ringan: 'Rusak ringan', rusak_berat: 'Rusak berat' };
-const statusLabels: Record<string, string> = { aktif: 'Aktif', tidak_aktif: 'Tidak aktif', dihapuskan: 'Dihapuskan', dipindahkan: 'Dipindahkan' };
-const golonganLabels: Record<string, string> = {
+export const statusLabels: Record<string, string> = { aktif: 'Aktif', tidak_aktif: 'Tidak aktif', dihapuskan: 'Dihapuskan', dipindahkan: 'Dipindahkan' };
+export const golonganLabels: Record<string, string> = {
   tanah: 'Tanah', peralatan_mesin: 'Peralatan dan mesin', gedung_bangunan: 'Gedung dan bangunan',
   jalan_irigasi: 'Jalan, irigasi, dan jaringan', aset_tetap_lainnya: 'Aset tetap lainnya', kdp: 'Konstruksi dalam pengerjaan',
 };
-export const jenisLabels: Record<string, string> = { rutinitas: 'Rutinitas', perbaikan: 'Perbaikan', penggantian: 'Penggantian' };
+export const jenisLabels: Record<string, string> = { rutinitas: 'Rutinitas', perbaikan: 'Perbaikan', penggantian: 'Penggantian', kalibrasi: 'Kalibrasi' };
+export const hasilLabels: Record<string, string> = { layak: 'Layak', tidak_layak: 'Tidak layak' };
+const kalibrasiFilters: Record<string, string> = {
+  perlu: 'Perlu kalibrasi', lewat: 'Sudah lewat', segera: 'Jatuh tempo ≤ 30 hari', belum: 'Belum pernah (alat kesehatan)', berlaku: 'Masih berlaku',
+};
+export const kalibrasiStatus: Record<string, string> = { berlaku: 'Berlaku', segera: 'Segera', lewat: 'Lewat', belum: 'Belum pernah' };
 export const pemeliharaanStatus: Record<string, string> = { menunggu: 'Menunggu', proses: 'Proses', selesai: 'Selesai', rusak: 'Rusak' };
 const text = (data: FormData, name: string) => String(data.get(name) ?? '').trim();
 const date = (value: unknown) => typeof value === 'string' && value ? dateFormat.format(new Date(value.slice(0, 10))) : '—';
@@ -80,7 +87,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
   options: Options; warehouse: boolean; refresh: () => void; onReport?: (asetId: number) => void; openId?: number;
   onScanNext?: () => void;
 }) {
-  const empty = { search: '', kategori: '', ruangan: '', kondisi: '', status: '', tahun: '', butuh_perbaikan: false };
+  const empty = { search: '', kategori: '', ruangan: '', kondisi: '', status: '', tahun: '', kalibrasi: '', butuh_perbaikan: false };
   const [filters, setFilters] = useState(empty);
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
@@ -129,7 +136,8 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setFilters({ search: text(data, 'search'), kategori: text(data, 'kategori'), ruangan: text(data, 'ruangan'),
-      kondisi: text(data, 'kondisi'), status: text(data, 'status'), tahun: text(data, 'tahun'), butuh_perbaikan: data.get('repair') === 'on' });
+      kondisi: text(data, 'kondisi'), status: text(data, 'status'), tahun: text(data, 'tahun'), kalibrasi: text(data, 'kalibrasi'),
+      butuh_perbaikan: data.get('repair') === 'on' });
     setPage(1);
   }
 
@@ -158,6 +166,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
       <div className="metric"><dt>Baik</dt><dd>{number.format(summary.baik)}</dd></div>
       <div className="metric"><dt>Rusak (ringan/berat)</dt><dd>{number.format(summary.rusak_ringan)} / {number.format(summary.rusak_berat)}</dd></div>
       <div className="metric"><dt>Nilai perolehan</dt><dd className="small">{rupiah.format(summary.nilai)}</dd></div>
+      {state.data?.kalibrasi && <div className="metric"><dt>Perlu kalibrasi</dt><dd>{number.format(state.data.kalibrasi.perlu)}</dd></div>}
     </dl>}
     <Message value={message} />
     {view?.mode === 'detail' && <AssetDetail detail={view.detail} warehouse={warehouse} busy={busy}
@@ -184,12 +193,14 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
         {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Tahun<select name="tahun" defaultValue={filters.tahun}><option value="">Semua</option>
         {options.years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
+      <label>Kalibrasi<select name="kalibrasi" defaultValue={filters.kalibrasi}><option value="">Semua</option>
+        {Object.entries(kalibrasiFilters).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="inline"><input type="checkbox" name="repair" defaultChecked={filters.butuh_perbaikan} /> Butuh perbaikan</label>
       <div className="form-actions wide">
         <button className="primary" type="submit">Terapkan</button>
         <button className="secondary" type="reset" onClick={() => { setFilters(empty); setPage(1); }}>Hapus filter</button>
         {warehouse && <button className="secondary" type="button" onClick={() => exportAssetsCsv(filters)
-          .catch((error: Error) => setMessage({ text: error.message, ok: false }))}>Export CSV</button>}
+          .catch((error: Error) => setMessage({ text: error.message, ok: false }))}>Unduh / Cetak</button>}
       </div>
     </form>
     {warehouse && selected.size > 0 && <div className="bulk-bar" role="region" aria-label="Aksi massal">
@@ -212,7 +223,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
           <table>
             <thead><tr>{warehouse && <th scope="col"><span className="sr-only">Pilih</span></th>}
               <th scope="col"><span className="sr-only">Foto</span></th><th scope="col">Nama dan kode</th><th scope="col">Kategori</th><th scope="col">Ruangan</th>
-              <th scope="col">Kondisi</th><th scope="col">Tahun</th><th scope="col">Nilai</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
+              <th scope="col">Kondisi</th><th scope="col">Kalibrasi</th><th scope="col">Tahun</th><th scope="col">Nilai</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
             <tbody>{state.data.rows.map((row) => <tr key={row.id}>
               {warehouse && <td><input type="checkbox" aria-label={'Pilih ' + row.name} checked={selected.has(row.id)} onChange={(event) => {
                 const next = new Set(selected);
@@ -225,6 +236,7 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
               <td><span className={'badge kondisi-' + row.kondisi}>{kondisiLabels[row.kondisi]}</span>
                 {row.repair && <span className="cell-note warn">Butuh perbaikan</span>}
                 {row.status !== 'aktif' && <span className="cell-note">{statusLabels[row.status]}</span>}</td>
+              <td><KalibrasiCell row={row} /></td>
               <td>{row.year ?? '—'}</td><td>{money(row.price)}</td>
               <td><button className="secondary" onClick={() => open(row.id)}>Detail</button></td>
             </tr>)}</tbody>
@@ -237,6 +249,17 @@ function AssetList({ options, warehouse, refresh, onReport, openId, onScanNext }
         </nav>
       </>}
   </section>;
+}
+
+// Latest kalibrasi (valid one year): date and result, then the due date coloured by how soon it is.
+function KalibrasiCell({ row }: { row: Row }) {
+  if (!row.kalibrasi_status) return <>—</>;
+  if (row.kalibrasi_status === 'belum') return <span className="badge">{kalibrasiStatus.belum}</span>;
+  return <>
+    <span className={'badge hasil-' + row.kalibrasi_hasil}>{hasilLabels[row.kalibrasi_hasil ?? ''] ?? '—'}</span>
+    <span className="cell-note">{date(row.kalibrasi_tanggal)}</span>
+    <span className={'badge kal-' + row.kalibrasi_status}>{kalibrasiStatus[row.kalibrasi_status]} s.d. {date(row.kalibrasi_berikutnya)}</span>
+  </>;
 }
 
 function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onReport, onScanNext, onPhoto }: {
@@ -263,7 +286,8 @@ function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onRep
       {detail.spesifikasi && <div className="wide"><dt>Spesifikasi</dt><dd>{detail.spesifikasi}</dd></div>}
       {detail.keterangan && <div className="wide"><dt>Keterangan</dt><dd>{detail.keterangan}</dd></div>}
       <div className="wide"><dt>Pemeliharaan terakhir</dt><dd>{detail.pemeliharaan.length ? <ul className="plain-list">
-        {detail.pemeliharaan.map((entry) => <li key={entry.id}>{date(entry.tanggal)} · {jenisLabels[entry.jenis]} · {pemeliharaanStatus[entry.status]} · {entry.teknisi}
+        {detail.pemeliharaan.map((entry) => <li key={entry.id}>{date(entry.tanggal)} · {jenisLabels[entry.jenis]}
+          {entry.hasil ? ' (' + hasilLabels[entry.hasil] + ')' : ''} · {pemeliharaanStatus[entry.status]} · {entry.teknisi}
           <span className="cell-note">{entry.deskripsi}</span></li>)}
       </ul> : 'Belum ada.'}</dd></div>
       <div className="wide"><dt>Riwayat pindah ruangan</dt><dd><AssetMoves asetId={detail.id} /></dd></div>

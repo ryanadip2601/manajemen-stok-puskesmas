@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { jenisLabels, kondisiLabels, pemeliharaanStatus } from './Aset';
-import { downloadCsv, stamp } from './csv';
+import { hasilLabels, jenisLabels, kondisiLabels, pemeliharaanStatus } from './Aset';
+import { exportReport } from './cetak';
 import { PhotoField, StoredPhoto } from './media';
 import { rpc } from './supabase';
 
@@ -9,7 +9,7 @@ type AssetOption = Option & { code: string; roomId: number; kondisi: string };
 type Options = { rooms: Option[]; assets: AssetOption[] };
 type Row = {
   id: number; date: string; jenis: string; status: string; teknisi: string; biaya: number | null; deskripsi: string;
-  tindakan: string | null; selesai: string | null; code: string; name: string; room: string; has_photo: boolean;
+  tindakan: string | null; selesai: string | null; code: string; name: string; room: string; has_photo: boolean; hasil: string | null;
 };
 type Counts = { total: number; menunggu: number; proses: number; selesai: number; rusak: number };
 type Page = { counts: Counts; total: number; rows: Row[] };
@@ -17,8 +17,9 @@ type Detail = {
   id: number; barang_aset_id: number; ruangan_id: number; tanggal_pemeliharaan: string; jenis_pemeliharaan: string;
   deskripsi_masalah: string; tindakan_perbaikan: string | null; status: string; teknisi: string; biaya: number | null;
   lampiran_foto: string | null; tanggal_selesai: string | null; catatan: string | null; kode_aset: string; nama_aset: string;
-  kondisi_aset: string; kategori: string; ruangan: string; created_by_name: string | null;
+  kondisi_aset: string; kategori: string; ruangan: string; created_by_name: string | null; hasil_kalibrasi: string | null;
 };
+const jenisText = (jenis: string, hasil: string | null) => jenisLabels[jenis] + (hasil ? ' · ' + hasilLabels[hasil] : '');
 
 const perPage = 15;
 const number = new Intl.NumberFormat('id-ID');
@@ -96,10 +97,11 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
   async function exportCsv() {
     try {
       const { rows } = await rpc<Page>('simbar_pemeliharaan_list', { filters, page_number: 0 });
-      downloadCsv(`pemeliharaan_aset_${stamp()}.csv`,
-        ['No', 'Tanggal', 'Kode Aset', 'Nama Aset', 'Ruangan', 'Jenis', 'Deskripsi Masalah', 'Tindakan', 'Status', 'Teknisi', 'Biaya', 'Tanggal Selesai'],
-        rows.map((row, index) => [index + 1, date(row.date), row.code, row.name, row.room, jenisLabels[row.jenis], row.deskripsi,
-          row.tindakan ?? '-', pemeliharaanStatus[row.status], row.teknisi, row.biaya ?? 0, date(row.selesai)]));
+      exportReport({ file: `pemeliharaan_aset`, title: 'LAPORAN PEMELIHARAAN ASET',
+    header: ['No', 'Tanggal', 'Kode Aset', 'Nama Aset', 'Ruangan', 'Jenis', 'Hasil Kalibrasi', 'Deskripsi Masalah', 'Tindakan', 'Status', 'Teknisi', 'Biaya', 'Tanggal Selesai'],
+    rows: rows.map((row, index) => [index + 1, date(row.date), row.code, row.name, row.room, jenisLabels[row.jenis],
+          row.hasil ? hasilLabels[row.hasil] : '-', row.deskripsi,
+          row.tindakan ?? '-', pemeliharaanStatus[row.status], row.teknisi, row.biaya ?? 0, date(row.selesai)]) });
     } catch (error) {
       setMessage({ text: (error as Error).message, ok: false });
     }
@@ -121,7 +123,8 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
       <h2>Pemeliharaan aset</h2>
       {!view && <button className="primary" disabled={!options} onClick={() => { setMessage({ text: '', ok: true }); setView({ mode: 'new' }); }}>Laporkan pemeliharaan</button>}
     </div>
-    <p>{warehouse ? 'Catat dan pantau pemeliharaan aset. Status selesai/rusak otomatis memperbarui kondisi aset.' : 'Laporkan kerusakan atau pemeliharaan aset di ruangan Anda.'}</p>
+    <p>{warehouse ? 'Catat dan pantau pemeliharaan aset. Status selesai/rusak otomatis memperbarui kondisi aset (kecuali kalibrasi). Kalibrasi berlaku 1 tahun dan tampil di daftar aset.'
+      : 'Laporkan kerusakan atau pemeliharaan aset di ruangan Anda.'}</p>
     {counts && <dl className="metrics compact">
       {(['menunggu', 'proses', 'selesai', 'rusak'] as const).map((key) =>
         <div className="metric" key={key}><dt>{pemeliharaanStatus[key]}</dt><dd>{number.format(counts[key])}</dd></div>)}
@@ -134,6 +137,8 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
         <div><dt>Ruangan</dt><dd>{view.detail.ruangan}</dd></div>
         <div><dt>Tanggal</dt><dd>{date(view.detail.tanggal_pemeliharaan)}</dd></div>
         <div><dt>Jenis</dt><dd>{jenisLabels[view.detail.jenis_pemeliharaan]}</dd></div>
+        {view.detail.hasil_kalibrasi && <div><dt>Hasil kalibrasi</dt><dd>
+          <span className={'badge hasil-' + view.detail.hasil_kalibrasi}>{hasilLabels[view.detail.hasil_kalibrasi]}</span></dd></div>}
         <div><dt>Status</dt><dd><span className={'badge status-' + view.detail.status}>{pemeliharaanStatus[view.detail.status]}</span></dd></div>
         <div><dt>Kondisi aset sekarang</dt><dd>{kondisiLabels[view.detail.kondisi_aset]}</dd></div>
         <div><dt>Teknisi</dt><dd>{view.detail.teknisi}</dd></div>
@@ -148,9 +153,9 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
       </dl>
       <div className="form-actions wide">
         {warehouse && <>
-          {view.detail.status !== 'proses' && <button className="secondary" disabled={busy} onClick={() => quickStatus(view.detail, 'proses')}>Tandai proses</button>}
+          {view.detail.jenis_pemeliharaan !== 'kalibrasi' && <>{view.detail.status !== 'proses' && <button className="secondary" disabled={busy} onClick={() => quickStatus(view.detail, 'proses')}>Tandai proses</button>}
           {view.detail.status !== 'selesai' && <button className="primary" disabled={busy} onClick={() => quickStatus(view.detail, 'selesai')}>Tandai selesai</button>}
-          {view.detail.status !== 'rusak' && <button className="danger" disabled={busy} onClick={() => quickStatus(view.detail, 'rusak')}>Tandai rusak</button>}
+          {view.detail.status !== 'rusak' && <button className="danger" disabled={busy} onClick={() => quickStatus(view.detail, 'rusak')}>Tandai rusak</button>}</>}
           <button className="secondary" onClick={() => setView({ mode: 'edit', detail: view.detail })}>Ubah</button>
           <button className="danger" disabled={busy} onClick={() => {
             if (confirm('Hapus laporan pemeliharaan ini?')) run(() => rpc('simbar_pemeliharaan_delete', { pemeliharaan_id: view.detail.id }), 'Laporan pemeliharaan berhasil dihapus.');
@@ -177,7 +182,7 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
       <div className="form-actions wide">
         <button className="primary" type="submit">Terapkan</button>
         <button className="secondary" type="reset" onClick={() => { setFilters(empty); setPage(1); }}>Hapus filter</button>
-        {warehouse && <button className="secondary" type="button" onClick={exportCsv}>Export CSV</button>}
+        {warehouse && <button className="secondary" type="button" onClick={exportCsv}>Unduh / Cetak</button>}
       </div>
     </form>
     {state.error ? <p className="notice" role="alert">{state.error}</p> : !state.data ? <p role="status">Memuat pemeliharaan…</p>
@@ -188,7 +193,7 @@ export function Pemeliharaan({ warehouse, openId, onBack, start, preset, backLab
               <th scope="col">Teknisi</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Aksi</span></th></tr></thead>
             <tbody>{state.data.rows.map((row) => <tr key={row.id}>
               <th scope="row"><strong>{row.name}</strong><span>{row.code} · {row.deskripsi}</span></th>
-              <td>{row.room}</td><td>{date(row.date)}</td><td>{jenisLabels[row.jenis]}</td><td>{row.teknisi}</td>
+              <td>{row.room}</td><td>{date(row.date)}</td><td>{jenisText(row.jenis, row.hasil)}</td><td>{row.teknisi}</td>
               <td><span className={'badge status-' + row.status}>{pemeliharaanStatus[row.status]}</span></td>
               <td><button className="secondary" onClick={() => open(row.id)}>Detail</button></td>
             </tr>)}</tbody>
@@ -209,6 +214,8 @@ function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel, preset }:
   const presetAset = !detail && preset ? options.assets.find((asset) => asset.id === preset) : undefined;
   const [room, setRoom] = useState(detail ? String(detail.ruangan_id) : presetAset ? String(presetAset.roomId) : '');
   const [photo, setPhoto] = useState<string | null>(detail?.lampiran_foto ?? null);
+  const [jenis, setJenis] = useState(detail?.jenis_pemeliharaan ?? 'perbaikan');
+  const kalibrasi = jenis === 'kalibrasi';
   const assets = options.assets.filter((asset) => String(asset.roomId) === room || asset.id === detail?.barang_aset_id);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -218,6 +225,7 @@ function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel, preset }:
       barang_aset_id: Number(data.get('aset')), ruangan_id: Number(room), tanggal_pemeliharaan: text(data, 'tanggal'),
       jenis_pemeliharaan: text(data, 'jenis'), deskripsi_masalah: text(data, 'deskripsi'), tindakan_perbaikan: text(data, 'tindakan'),
       teknisi: text(data, 'teknisi'), biaya: text(data, 'biaya'), catatan: text(data, 'catatan'), lampiran_foto: photo,
+      hasil_kalibrasi: kalibrasi ? text(data, 'hasil') : '',
       ...(detail ? { status: text(data, 'status'), tanggal_selesai: text(data, 'selesai') } : {}),
     });
   }
@@ -232,10 +240,14 @@ function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel, preset }:
       {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} ({asset.code}) — {kondisiLabels[asset.kondisi]}</option>)}
     </select></label>
     <label>Tanggal<input name="tanggal" type="date" required defaultValue={detail?.tanggal_pemeliharaan ?? today()} /></label>
-    <label>Jenis<select name="jenis" required defaultValue={detail?.jenis_pemeliharaan ?? 'perbaikan'}>
+    <label>Jenis<select name="jenis" required value={jenis} onChange={(event) => setJenis(event.target.value)}>
       {Object.entries(jenisLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
     </select></label>
-    <label>Teknisi<input name="teknisi" required maxLength={100} defaultValue={detail?.teknisi ?? ''} /></label>
+    {kalibrasi && <label>Hasil kalibrasi<select name="hasil" required defaultValue={detail?.hasil_kalibrasi ?? ''}>
+      <option value="" disabled>Pilih hasil</option>
+      {Object.entries(hasilLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+    </select></label>}
+    <label>{kalibrasi ? 'Petugas / lembaga kalibrasi' : 'Teknisi'}<input name="teknisi" required maxLength={100} defaultValue={detail?.teknisi ?? ''} /></label>
     <label>Biaya (Rp)<input name="biaya" type="number" min="0" step="any" defaultValue={detail?.biaya ?? ''} /></label>
     {detail && <>
       <label>Status<select name="status" required defaultValue={detail.status}>
@@ -243,7 +255,9 @@ function PemeliharaanForm({ options, detail, busy, onSubmit, onCancel, preset }:
       </select></label>
       <label>Tanggal selesai<input name="selesai" type="date" defaultValue={detail.tanggal_selesai ?? ''} /></label>
     </>}
-    <label className="wide">Deskripsi masalah<textarea name="deskripsi" rows={2} required defaultValue={detail?.deskripsi_masalah ?? ''} /></label>
+    {kalibrasi && !detail && <p className="wide cell-note">Kalibrasi dicatat sebagai sudah selesai pada tanggal di atas, berlaku 1 tahun, dan tidak mengubah kondisi aset.</p>}
+    <label className="wide">{kalibrasi ? 'Keterangan kalibrasi' : 'Deskripsi masalah'}<textarea name="deskripsi" rows={2} required
+      defaultValue={detail?.deskripsi_masalah ?? ''} key={kalibrasi ? 'k' : 'm'} placeholder={kalibrasi ? 'Mis. Kalibrasi rutin tahunan' : undefined} /></label>
     <label className="wide">Tindakan perbaikan<textarea name="tindakan" rows={2} defaultValue={detail?.tindakan_perbaikan ?? ''} /></label>
     <label className="wide">Catatan<textarea name="catatan" rows={2} defaultValue={detail?.catatan ?? ''} /></label>
     <PhotoField label="Lampiran foto" value={photo} onChange={setPhoto} />

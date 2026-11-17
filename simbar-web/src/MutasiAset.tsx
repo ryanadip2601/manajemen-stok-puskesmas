@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { rpc } from './supabase';
-import { downloadCsv, stamp } from './csv';
+import { exportReport } from './cetak';
 
 // Mutasi aset: pindah ruangan, khusus barang aset (barang habis pakai hanya masuk/keluar gudang).
 // Every move is kept per asset: dari, ke, tanggal, petugas and alasan.
@@ -72,8 +72,9 @@ export function MutasiAset() {
   async function exportCsv() {
     try {
       const all = await rpc<MovePage>('simbar_mutasi_aset_list', { filters, page_number: 0 });
-      downloadCsv(`mutasi_aset_${stamp()}.csv`, ['No', 'Tanggal', 'Kode Aset', 'Nama Aset', 'Merk', 'Dari Ruangan', 'Ke Ruangan', 'Alasan', 'Petugas'],
-        all.rows.map((row, index) => [index + 1, row.tanggal.slice(0, 10), row.code, row.name, row.merk ?? '-', row.dari, row.ke, row.alasan ?? '-', row.petugas ?? '-']));
+      exportReport({ file: `mutasi_aset`, title: 'LAPORAN MUTASI ASET (PINDAH RUANGAN)',
+    header: ['No', 'Tanggal', 'Kode Aset', 'Nama Aset', 'Merk', 'Dari Ruangan', 'Ke Ruangan', 'Alasan', 'Petugas'],
+    rows: all.rows.map((row, index) => [index + 1, row.tanggal.slice(0, 10), row.code, row.name, row.merk ?? '-', row.dari, row.ke, row.alasan ?? '-', row.petugas ?? '-']) });
     } catch (error) {
       setMessage({ text: (error as Error).message, ok: false });
     }
@@ -105,7 +106,7 @@ export function MutasiAset() {
       <div className="form-actions">
         <button className="primary" type="submit">Terapkan</button>
         {filtered && <button className="secondary" type="button" onClick={() => setFilter({ search: '', ruangan: '', from: '', to: '', page: 1 })}>Hapus filter</button>}
-        {total > 0 && <button className="secondary" type="button" onClick={exportCsv}>Export CSV</button>}
+        {total > 0 && <button className="secondary" type="button" onClick={exportCsv}>Unduh / Cetak</button>}
       </div>
     </form>
     {state.error ? <p className="notice" role="alert">{state.error}</p> : !state.data ? <p role="status">Memuat riwayat…</p>

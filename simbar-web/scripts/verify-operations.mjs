@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql', 'ops-mutasi-aset.sql', 'ops-terima-batch.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql', 'ops-mutasi-aset.sql', 'ops-terima-batch.sql', 'ops-cetak.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -266,6 +266,56 @@ try {
     FROM simbar.pemeliharaan_aset p JOIN simbar.barang_aset a ON a.id = p.barang_aset_id WHERE p.id = $1`, [repair]);
   assert.deepEqual(fixed, { kondisi: 'baik', butuh_perbaikan: false, done: true, tindakan_perbaikan: 'Selang diganti' });
   await db.query('SELECT public.simbar_pemeliharaan_delete($1)', [repair]);
+
+  // Kalibrasi: needs a layak / tidak layak result, is recorded as selesai, never changes the aset condition,
+  // and the latest one (valid one year) shows in the aset list with its own filter.
+  const kalForm = { barang_aset_id: asetId, ruangan_id: ruang2, jenis_pemeliharaan: 'kalibrasi', deskripsi_masalah: 'Kalibrasi tahunan',
+    teknisi: 'Lembaga Uji' };
+  const days = async (n) => (await one(`SELECT (simbar.local_today() + $1::integer)::text AS d`, [n])).d;
+  await db.query(`UPDATE simbar.barang_aset SET kondisi = 'rusak_ringan' WHERE id = $1`, [asetId]);
+  await assert.rejects(db.query('SELECT public.simbar_pemeliharaan_save(NULL, $1)', [JSON.stringify({ ...kalForm,
+    tanggal_pemeliharaan: await days(-400) })]), /Hasil kalibrasi harus dipilih/);
+  const oldKal = (await one('SELECT public.simbar_pemeliharaan_save(NULL, $1) AS id', [JSON.stringify({ ...kalForm,
+    tanggal_pemeliharaan: await days(-400), hasil_kalibrasi: 'layak' })])).id;
+  const oldRow = await one(`SELECT p.status, p.hasil_kalibrasi, p.tanggal_selesai = p.tanggal_pemeliharaan AS same, a.kondisi
+    FROM simbar.pemeliharaan_aset p JOIN simbar.barang_aset a ON a.id = p.barang_aset_id WHERE p.id = $1`, [oldKal]);
+  assert.deepEqual(oldRow, { status: 'selesai', hasil_kalibrasi: 'layak', same: true, kondisi: 'rusak_ringan' });
+  const kalRow = async (filter = {}) => (await one(`SELECT public.simbar_aset_list($1, 1) AS l`,
+    [JSON.stringify({ search: 'Tensimeter Uji', ...filter })])).l;
+  assert.equal((await kalRow()).rows[0].kalibrasi_status, 'lewat');
+  assert.equal((await kalRow({ kalibrasi: 'perlu' })).total, 1);
+  const newKal = (await one('SELECT public.simbar_pemeliharaan_save(NULL, $1) AS id', [JSON.stringify({ ...kalForm,
+    tanggal_pemeliharaan: await days(-1), hasil_kalibrasi: 'tidak_layak' })])).id;
+  const latest = (await kalRow()).rows[0];
+  assert.deepEqual([latest.kalibrasi_status, latest.kalibrasi_hasil, latest.kalibrasi_tanggal], ['berlaku', 'tidak_layak', await days(-1)]);
+  assert.equal((await kalRow({ kalibrasi: 'perlu' })).total, 0);
+  assert.equal((await kalRow({ kalibrasi: 'berlaku' })).total, 1);
+  await db.query(`SELECT public.simbar_pemeliharaan_status($1, 'rusak')`, [newKal]);
+  assert.equal((await one('SELECT kondisi FROM simbar.barang_aset WHERE id = $1', [asetId])).kondisi, 'rusak_ringan',
+    'kalibrasi never changes the aset condition');
+  await db.query('SELECT public.simbar_pemeliharaan_save($1, $2)', [newKal, JSON.stringify({ ...kalForm, tanggal_pemeliharaan: await days(-1),
+    hasil_kalibrasi: 'layak', status: 'selesai' })]);
+  assert.equal((await one('SELECT kondisi FROM simbar.barang_aset WHERE id = $1', [asetId])).kondisi, 'rusak_ringan');
+  assert.equal((await one('SELECT public.simbar_aset_get($1) AS a', [asetId])).a.pemeliharaan[0].hasil, 'layak');
+  const perbaikan = (await one('SELECT public.simbar_pemeliharaan_save(NULL, $1) AS id', [JSON.stringify({ ...kalForm,
+    jenis_pemeliharaan: 'perbaikan', tanggal_pemeliharaan: await days(0), hasil_kalibrasi: 'layak' })])).id;
+  assert.equal((await one('SELECT hasil_kalibrasi FROM simbar.pemeliharaan_aset WHERE id = $1', [perbaikan])).hasil_kalibrasi, null,
+    'only kalibrasi keeps a result');
+  // A label scanned without signing in shows the asset card: label data, condition, kalibrasi and maintenance dates only.
+  await as('');
+  await assert.rejects(db.query('SELECT public.simbar_aset_get($1)', [asetId]), /not approved or linked/);
+  const card = (await one('SELECT public.simbar_aset_public($1) AS a', [asetId])).a;
+  assert.deepEqual([card.kode_aset, card.nama_aset, card.ruangan, card.kondisi, card.kalibrasi_status, card.kalibrasi_hasil],
+    [nextCode, 'Tensimeter Uji', 'Ruang Uji 2', 'rusak_ringan', 'berlaku', 'layak']);
+  for (const key of ['harga_perolehan', 'nilai_residu', 'sumber_dana', 'foto', 'contoh', 'keterangan', 'created_by', 'created_by_name']) {
+    assert.ok(!(key in card), key + ' must not be on the public card');
+  }
+  assert.equal(card.pemeliharaan.length, 3);
+  assert.deepEqual(Object.keys(card.pemeliharaan[0]).sort(), ['hasil', 'id', 'jenis', 'status', 'tanggal'], 'no teknisi or deskripsi on the public card');
+  await assert.rejects(db.query('SELECT public.simbar_aset_public(0)'), /Aset tidak ditemukan/);
+  await as(ADMIN);
+  for (const id of [oldKal, newKal, perbaikan]) await db.query('SELECT public.simbar_pemeliharaan_delete($1)', [id]);
+
   assert.equal((await one('SELECT public.simbar_aset_delete($1) AS n', [[asetId]])).n, 1);
   await db.query('SELECT public.simbar_ruangan_delete($1)', [ruang]);
   await db.query('SELECT public.simbar_kategori_aset_delete($1)', [kategoriAset]);
@@ -670,6 +720,18 @@ try {
   await as(STAFF);
   await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch('2026-11-10', 'x', $1)`, [bLines([{ item: bA, quantity: 1 }])]), /Akses ditolak/);
   await assert.rejects(db.query(`SELECT public.simbar_item_by_barcode('8990001112223')`), /Akses ditolak/);
+  await as(ADMIN);
+
+  // Pengaturan cetak (kop dan tanda tangan): one copy for every device; staff read, the warehouse writes.
+  assert.equal((await one(`SELECT public.simbar_cetak_settings() AS s`)).s, null);
+  await assert.rejects(db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify({ kop: 'X', lain: 'y' })]), /tidak valid/);
+  await assert.rejects(db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify({ kop: 'x'.repeat(801) })]), /terlalu panjang/);
+  await assert.rejects(db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify(['kop'])]), /tidak valid/);
+  await db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify({ kop: 'KOP UJI', logo: 'ya', kiriNama: 'A' })]);
+  await db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify({ kop: 'KOP UJI 2', logo: 'tidak' })]);
+  await as(STAFF);
+  assert.deepEqual((await one(`SELECT public.simbar_cetak_settings() AS s`)).s, { kop: 'KOP UJI 2', logo: 'tidak' });
+  await assert.rejects(db.query(`SELECT public.simbar_cetak_settings_save($1)`, [JSON.stringify({ kop: 'Z' })]), /Akses ditolak/);
   await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);

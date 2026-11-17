@@ -39,7 +39,50 @@ BEGIN
 END;
 $function$;
 
+-- Kartu aset: what a scanned label shows without signing in. The label's own data, condition, status, kalibrasi
+-- and the dates of the last maintenance. No money, no people (petugas, teknisi, pencatat), no photo, no notes.
+-- Changing anything still needs the app and a signed-in, approved profile (simbar_aset_get and the save functions).
+CREATE OR REPLACE FUNCTION public.simbar_aset_public(aset_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE
+    result jsonb;
+BEGIN
+    SELECT jsonb_build_object('id', a.id, 'kode_aset', a.kode_aset, 'nama_aset', a.nama_aset, 'merk', a.merk,
+            'kategori', k.nama_kategori, 'golongan', k.golongan, 'ruangan', r.nama_ruangan,
+            'kondisi', a.kondisi, 'butuh_perbaikan', a.butuh_perbaikan, 'status_aset', a.status_aset, 'jumlah', a.jumlah,
+            'tahun_perolehan', a.tahun_perolehan, 'nomor_register', a.nomor_register,
+            'spesifikasi', a.spesifikasi, 'ukuran_konstruksi', a.ukuran_konstruksi,
+            'kalibrasi_tanggal', kal.tanggal, 'kalibrasi_hasil', kal.hasil,
+            'kalibrasi_berikutnya', (kal.tanggal + interval '1 year')::date,
+            'kalibrasi_status', CASE WHEN kal.tanggal IS NULL THEN CASE WHEN k.nama_kategori ILIKE 'alat kesehatan%' THEN 'belum' END
+                WHEN (kal.tanggal + interval '1 year')::date < simbar.local_today() THEN 'lewat'
+                WHEN (kal.tanggal + interval '1 year')::date <= simbar.local_today() + 30 THEN 'segera'
+                ELSE 'berlaku' END,
+            'pemeliharaan', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'tanggal', p.tanggal_pemeliharaan,
+                    'jenis', p.jenis_pemeliharaan, 'status', p.status, 'hasil', p.hasil_kalibrasi)
+                ORDER BY p.tanggal_pemeliharaan DESC, p.id DESC), '[]')
+                FROM (SELECT * FROM simbar.pemeliharaan_aset WHERE barang_aset_id = a.id
+                      ORDER BY tanggal_pemeliharaan DESC, id DESC LIMIT 5) p))
+    INTO result
+    FROM simbar.barang_aset a
+    JOIN simbar.kategori_aset k ON k.id = a.kategori_aset_id
+    JOIN simbar.ruangan r ON r.id = a.ruangan_id
+    LEFT JOIN LATERAL (SELECT p.tanggal_pemeliharaan AS tanggal, p.hasil_kalibrasi AS hasil FROM simbar.pemeliharaan_aset p
+        WHERE p.barang_aset_id = a.id AND p.jenis_pemeliharaan = 'kalibrasi' AND p.status = 'selesai'
+        ORDER BY p.tanggal_pemeliharaan DESC, p.id DESC LIMIT 1) kal ON true
+    WHERE a.id = aset_id;
+    IF result IS NULL THEN
+        RAISE no_data_found USING MESSAGE = 'Aset tidak ditemukan.';
+    END IF;
+    RETURN result;
+END;
+$function$;
+
 REVOKE ALL ON FUNCTION public.simbar_public_dashboard() FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.simbar_public_dashboard() TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.simbar_aset_public(bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.simbar_aset_public(bigint) TO anon, authenticated;
 
 COMMIT;

@@ -25,7 +25,9 @@ BEGIN
 END;
 $function$;
 
--- filters: {search, kategori, ruangan, kondisi, status, tahun, butuh_perbaikan}. page_number 0 returns every match.
+-- filters: {search, kategori, ruangan, kondisi, status, tahun, butuh_perbaikan, kalibrasi}. page_number 0 returns every match.
+-- kalibrasi: the latest kalibrasi is valid for one year. 'berlaku' (more than 30 days left), 'segera' (30 days or less),
+-- 'lewat' (expired), 'belum' (an Alat Kesehatan with no kalibrasi yet), 'perlu' (segera + lewat + belum).
 CREATE OR REPLACE FUNCTION public.simbar_aset_list(filters jsonb DEFAULT '{}', page_number integer DEFAULT 1)
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
@@ -45,10 +47,19 @@ BEGIN
         SELECT a.id, a.kode_aset AS code, a.nama_aset AS name, a.merk, a.jumlah, a.kondisi, a.status_aset AS status,
                a.butuh_perbaikan AS repair, a.tahun_perolehan AS year, a.harga_perolehan AS price, a.nomor_register AS register,
                a.sumber_dana AS dana, k.nama_kategori AS category, k.golongan, r.nama_ruangan AS room, a.foto IS NOT NULL AS has_photo,
-               a.foto AS photo, CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id) END AS contoh
+               a.foto AS photo, CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id) END AS contoh,
+               kal.tanggal AS kalibrasi_tanggal, kal.hasil AS kalibrasi_hasil,
+               (kal.tanggal + interval '1 year')::date AS kalibrasi_berikutnya,
+               CASE WHEN kal.tanggal IS NULL THEN CASE WHEN k.nama_kategori ILIKE 'alat kesehatan%' THEN 'belum' END
+                    WHEN (kal.tanggal + interval '1 year')::date < simbar.local_today() THEN 'lewat'
+                    WHEN (kal.tanggal + interval '1 year')::date <= simbar.local_today() + 30 THEN 'segera'
+                    ELSE 'berlaku' END AS kalibrasi_status
         FROM simbar.barang_aset a
         JOIN simbar.kategori_aset k ON k.id = a.kategori_aset_id
         JOIN simbar.ruangan r ON r.id = a.ruangan_id
+        LEFT JOIN LATERAL (SELECT p.tanggal_pemeliharaan AS tanggal, p.hasil_kalibrasi AS hasil FROM simbar.pemeliharaan_aset p
+            WHERE p.barang_aset_id = a.id AND p.jenis_pemeliharaan = 'kalibrasi' AND p.status = 'selesai'
+            ORDER BY p.tanggal_pemeliharaan DESC, p.id DESC LIMIT 1) kal ON true
         WHERE (a.nama_aset ILIKE pattern ESCAPE '!' OR a.kode_aset ILIKE pattern ESCAPE '!' OR a.merk ILIKE pattern ESCAPE '!'
                OR a.nomor_register ILIKE pattern ESCAPE '!')
           AND (nullif(filters->>'kategori', '') IS NULL OR a.kategori_aset_id = (filters->>'kategori')::bigint)
@@ -57,15 +68,23 @@ BEGIN
           AND (nullif(filters->>'status', '') IS NULL OR a.status_aset = filters->>'status')
           AND (nullif(filters->>'tahun', '') IS NULL OR a.tahun_perolehan = (filters->>'tahun')::integer)
           AND (coalesce((filters->>'butuh_perbaikan')::boolean, false) = false OR a.butuh_perbaikan)
+    ), filtered AS MATERIALIZED (
+        SELECT * FROM matched
+        WHERE nullif(filters->>'kalibrasi', '') IS NULL OR kalibrasi_status = filters->>'kalibrasi'
+           OR (filters->>'kalibrasi' = 'perlu' AND kalibrasi_status IN ('segera', 'lewat', 'belum'))
     )
     SELECT jsonb_build_object(
         'summary', (SELECT jsonb_build_object('total', count(*), 'baik', count(*) FILTER (WHERE kondisi = 'baik'),
                 'rusak_ringan', count(*) FILTER (WHERE kondisi = 'rusak_ringan'), 'rusak_berat', count(*) FILTER (WHERE kondisi = 'rusak_berat'),
                 'butuh_perbaikan', count(*) FILTER (WHERE butuh_perbaikan), 'nilai', coalesce(sum(harga_perolehan), 0))
             FROM simbar.barang_aset),
-        'total', (SELECT count(*) FROM matched),
+        'kalibrasi', (SELECT jsonb_build_object('perlu', count(*) FILTER (WHERE kalibrasi_status IN ('segera', 'lewat', 'belum')),
+                'lewat', count(*) FILTER (WHERE kalibrasi_status = 'lewat'), 'segera', count(*) FILTER (WHERE kalibrasi_status = 'segera'),
+                'belum', count(*) FILTER (WHERE kalibrasi_status = 'belum'), 'berlaku', count(*) FILTER (WHERE kalibrasi_status = 'berlaku'))
+            FROM matched),
+        'total', (SELECT count(*) FROM filtered),
         'rows', coalesce((SELECT jsonb_agg(to_jsonb(m) ORDER BY lower(m.name), m.id)
-            FROM (SELECT * FROM matched ORDER BY lower(name), id
+            FROM (SELECT * FROM filtered ORDER BY lower(name), id
                   LIMIT CASE WHEN page_number = 0 THEN NULL ELSE 15 END
                   OFFSET CASE WHEN page_number = 0 THEN 0 ELSE (page_number - 1) * 15 END) m), '[]')
     ) INTO result;
@@ -86,7 +105,8 @@ BEGIN
             'contoh', CASE WHEN coalesce(a.foto, '') = '' THEN simbar.aset_contoh(a.nama_aset, a.id) END,
             'foto_diambil_oleh_name', (SELECT name FROM simbar.users WHERE id = a.foto_diambil_oleh),
             'pemeliharaan', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'tanggal', p.tanggal_pemeliharaan,
-                    'jenis', p.jenis_pemeliharaan, 'status', p.status, 'teknisi', p.teknisi, 'deskripsi', p.deskripsi_masalah)
+                    'jenis', p.jenis_pemeliharaan, 'status', p.status, 'teknisi', p.teknisi, 'deskripsi', p.deskripsi_masalah,
+                    'hasil', p.hasil_kalibrasi)
                 ORDER BY p.tanggal_pemeliharaan DESC, p.id DESC), '[]')
                 FROM (SELECT * FROM simbar.pemeliharaan_aset WHERE barang_aset_id = a.id
                       AND (actor.role <> 'staff' OR created_by = actor.id)

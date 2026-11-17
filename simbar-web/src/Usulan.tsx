@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { downloadCsv, stamp } from './csv';
+import { exportReport } from './cetak';
 import { StoredPhoto, uploadPhoto } from './media';
 import { rpc } from './supabase';
 
@@ -66,12 +66,12 @@ async function exportCsv(mine: boolean, status: 'all' | Status, room: string, se
   const { rows } = await rpc<Page>('simbar_usulan_list', {
     mine_only: mine, status_filter: status, room_filter: room ? Number(room) : null, search_text: search, page_number: 0,
   });
-  downloadCsv(`${mine ? 'usulan_penerimaan_saya' : 'laporan_usulan_penerimaan'}_${stamp()}.csv`,
-    ['Kode Usulan', 'Tanggal Usulan', ...(mine ? [] : ['Pengusul']), 'Ruangan', 'Nama Barang', 'Merk', 'Jumlah', 'Kondisi',
+  exportReport({ file: `${mine ? 'usulan_penerimaan_saya' : 'laporan_usulan_penerimaan'}`, title: 'LAPORAN USULAN PENERIMAAN BARANG',
+    header: ['Kode Usulan', 'Tanggal Usulan', ...(mine ? [] : ['Pengusul']), 'Ruangan', 'Nama Barang', 'Merk', 'Jumlah', 'Kondisi',
       'Kelengkapan', 'Estimasi Harga', 'Prioritas', 'Status', 'Diverifikasi Oleh', 'Tanggal Verifikasi'],
-    rows.map((row) => [row.code, date(row.date), ...(mine ? [] : [row.requested_by]), row.room, row.name, row.merk ?? '-', row.jumlah,
+    rows: rows.map((row) => [row.code, date(row.date), ...(mine ? [] : [row.requested_by]), row.room, row.name, row.merk ?? '-', row.jumlah,
       kondisiLabels[row.kondisi], kelengkapanLabels[row.kelengkapan], row.harga === null ? '-' : rupiah.format(row.harga),
-      prioritasLabels[row.prioritas], statusLabels[row.status], row.verified_by ?? '-', date(row.verified_at)]));
+      prioritasLabels[row.prioritas], statusLabels[row.status], row.verified_by ?? '-', date(row.verified_at)]) });
 }
 
 function Toolbar({ options, counts, status, setStatus, room, setRoom, onSearch, onExport }: {
@@ -94,7 +94,7 @@ function Toolbar({ options, counts, status, setStatus, room, setRoom, onSearch, 
         {options?.rooms.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select>
       <button className="primary" type="submit">Cari</button>
-      {onExport && <button className="secondary" type="button" onClick={onExport}>Export CSV</button>}
+      {onExport && <button className="secondary" type="button" onClick={onExport}>Unduh / Cetak</button>}
     </form>
   </>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { downloadCsv, stamp } from './csv';
+import { exportReport } from './cetak';
 import { rpc } from './supabase';
 
 type Totals = { total_aset: number; total_nilai_perolehan: number; total_akumulasi: number; total_nilai_buku: number; total_penyusutan?: number; aset_habis_umur?: number };
@@ -64,10 +64,11 @@ export function Penyusutan() {
     try {
       const rows = await rpc<Record<string, string | number | null>[]>('simbar_penyusutan_export', { tahun_filter: year });
       if (!rows.length) return setMessage({ text: `Belum ada data penyusutan tersimpan untuk tahun ${year}.`, ok: false });
-      downloadCsv(`laporan_penyusutan_${year}.csv`, ['Kode Aset', 'Nama Aset', 'Kategori', 'Golongan', 'Ruangan', 'Tahun Perolehan',
+      exportReport({ file: `laporan_penyusutan_${year}`, title: 'LAPORAN PENYUSUTAN ASET', subtitle: `Tahun ${year}`,
+    header: ['Kode Aset', 'Nama Aset', 'Kategori', 'Golongan', 'Ruangan', 'Tahun Perolehan',
         'Nilai Perolehan', 'Umur Manfaat', 'Penyusutan/Tahun', 'Akumulasi Penyusutan', 'Nilai Buku'],
-      rows.map((row) => [row.kode_aset, row.nama_aset, row.kategori, row.golongan, row.ruangan, row.tahun_perolehan, row.nilai_perolehan,
-        row.umur_manfaat, row.penyusutan_per_tahun, row.akumulasi_penyusutan, row.nilai_buku]));
+    rows: rows.map((row) => [row.kode_aset, row.nama_aset, row.kategori, row.golongan, row.ruangan, row.tahun_perolehan, row.nilai_perolehan,
+        row.umur_manfaat, row.penyusutan_per_tahun, row.akumulasi_penyusutan, row.nilai_buku]) });
     } catch (error) {
       setMessage({ text: (error as Error).message, ok: false });
     }
@@ -93,7 +94,7 @@ export function Penyusutan() {
           {years.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
         <button className="primary" disabled={busy || year < 2000 || year > thisYear + 1} onClick={proses}>{busy ? 'Memproses…' : `Proses tahun ${year}`}</button>
-        <button className="secondary" onClick={exportYear}>Export CSV {year}</button>
+        <button className="secondary" onClick={exportYear}>Unduh / Cetak {year}</button>
       </div>
     </div>
     <p>Metode garis lurus per bulan, mulai bulan setelah perolehan. Tanah dan konstruksi dalam pengerjaan tidak disusutkan.</p>
@@ -229,9 +230,10 @@ function KartuAset({ kartu, close }: { kartu: Kartu; close: () => void }) {
 export async function exportAssetsCsv(filters: { ruangan?: string; kategori?: string; kondisi?: string }) {
   const rows = await rpc<DepreciationRow[]>('simbar_penyusutan_detail', { filters: { ...filters, aktif_only: false }, tanggal: null });
   const kondisi: Record<string, string> = { baik: 'Baik', rusak_ringan: 'Rusak Ringan', rusak_berat: 'Rusak Berat' };
-  downloadCsv(`barang_aset_${stamp()}.csv`, ['No', 'Kode Aset', 'Nama Aset', 'Kategori', 'Golongan', 'Ruangan', 'Kondisi', 'Jumlah',
+  exportReport({ file: `barang_aset`, title: 'DAFTAR BARANG ASET',
+    header: ['No', 'Kode Aset', 'Nama Aset', 'Kategori', 'Golongan', 'Ruangan', 'Kondisi', 'Jumlah',
     'Tahun Perolehan', 'Harga Perolehan', 'Umur Manfaat', 'Akum. Penyusutan', 'Nilai Buku', 'Sumber Dana', 'Merk'],
-  rows.map((row, index) => [index + 1, row.kode_aset, row.nama_aset, row.kategori, row.golongan, row.ruangan, kondisi[row.kondisi] ?? row.kondisi,
+    rows: rows.map((row, index) => [index + 1, row.kode_aset, row.nama_aset, row.kategori, row.golongan, row.ruangan, kondisi[row.kondisi] ?? row.kondisi,
     row.jumlah, row.tahun_perolehan ?? '-', row.nilai_perolehan, row.umur_manfaat, row.akumulasi_penyusutan, row.nilai_buku,
-    row.sumber_dana ?? '-', row.merk ?? '-']));
+    row.sumber_dana ?? '-', row.merk ?? '-']) });
 }

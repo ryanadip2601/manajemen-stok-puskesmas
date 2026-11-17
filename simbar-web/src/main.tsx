@@ -1,6 +1,9 @@
 import type { Session } from '@supabase/supabase-js';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+// The camera reader is loaded only when someone taps "Pindai label" on the public page.
+const QrScanner = lazy(() => import('./QrScanner').then((m) => ({ default: m.QrScanner })));
+import { AsetPublik } from './AsetPublik';
 import { Inventory, type InventoryKind } from './Inventory';
 import { AsetMenu, type AsetTab } from './AsetMenu';
 import { Laporan } from './Laporan';
@@ -11,6 +14,7 @@ import { Pengajuan } from './Pengajuan';
 import { RapikanBarang } from './Rapikan';
 import { FotoAsliPanel } from './FotoBarang';
 import { PhotoViewer } from './media';
+import { ExportDialog } from './cetak';
 import { Catalog, Mutasi } from './Stock';
 import { AuthScreen, NewPassword, PendingAccount, ProfilePage } from './Account';
 import { client, rpc } from './supabase';
@@ -96,6 +100,8 @@ function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [notice, setNotice] = useState('');
   const [theme, toggleTheme] = useTheme();
+  // A scanned label opens /?aset=<id>: signed out it shows the read-only asset card, signed in the asset itself.
+  const [publicAset] = useState(() => Number(new URLSearchParams(window.location.search).get('aset')) || undefined);
   const ambience = useSeason();
   const music = useMusic(!!(ready && session && !recovery && status?.approved));
 
@@ -151,7 +157,7 @@ function App() {
     <CursorTrail />
     {ready && session && !recovery && status?.approved
       ? <Dashboard key={session.user.id} session={session} selfId={status.id ?? null} notice={notice} signOut={signOut} controls={controls} />
-      : ready && !session ? <PublicHome notice={notice} controls={controls} />
+      : ready && !session ? <PublicHome notice={notice} controls={controls} aset={publicAset} />
       : <div className="auth-shell">
     {session && <button className="logout auth-signout" onClick={signOut}><i className="fas fa-right-from-bracket" aria-hidden="true" /><span>Keluar</span></button>}
     <main className="auth-main">
@@ -184,8 +190,18 @@ function AmbientControls({ controls }: { controls: Ambience }) {
 }
 
 // What everyone sees before signing in: the public charts, with the sign-in form one tap away in the header.
-function PublicHome({ notice, controls }: { notice: string; controls: Ambience }) {
+// A label scanned by the phone camera (or with "Pindai label aset" here) shows that asset's read-only card.
+// The address keeps ?aset=<id> while the card is open, so signing in from it opens the same asset in the app.
+function PublicHome({ notice, controls, aset }: { notice: string; controls: Ambience; aset?: number }) {
   const [login, setLogin] = useState(false);
+  const [card, setCard] = useState<number | null>(aset ?? null);
+  const [scanning, setScanning] = useState(false);
+  const showCard = useCallback((id: number | null) => {
+    setCard(id);
+    window.history.replaceState(null, '', id ? '/?aset=' + id : '/');
+    window.scrollTo(0, 0);
+  }, []);
+  const found = useCallback((id: number) => { setScanning(false); showCard(id); }, [showCard]);
   useEffect(() => {
     if (!login) return;
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setLogin(false); };
@@ -207,12 +223,20 @@ function PublicHome({ notice, controls }: { notice: string; controls: Ambience }
     </header>
     <main className="content public-content">
       {notice && <p className="notice" role="alert">{notice}</p>}
+      {scanning && <Suspense fallback={<div className="scanner"><p className="scanner-box" role="status">Membuka kamera…</p></div>}>
+        <QrScanner onFound={found} onClose={() => setScanning(false)} /></Suspense>}
+      {card ? <div className="page">
+        <AsetPublik key={card} asetId={card} onScan={() => setScanning(true)} onBack={() => showCard(null)} onLogin={() => setLogin(true)} />
+      </div> : <>
       <section className="public-hero">
         <p className="eyebrow">Inventaris &amp; pemeliharaan</p>
         <h1>Dashboard SIMBAR</h1>
         <p>Ringkasan stok dan aset UPTD Puskesmas Karang Rejo. Masuk untuk mengelola barang, permintaan, dan aset.</p>
+        <div className="form-actions"><button className="secondary" onClick={() => setScanning(true)}>
+          <i className="fas fa-qrcode" aria-hidden="true" /> Pindai label aset</button></div>
       </section>
       <div className="page"><Overview publicView /></div>
+      </>}
     </main>
     <footer className="app-footer">UPTD Puskesmas Karang Rejo <span aria-hidden="true">·</span> Kota Balikpapan</footer>
     {login && <div className="login-overlay" role="dialog" aria-modal="true" aria-label="Masuk ke SIMBAR"
@@ -334,6 +358,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
 
   return <div className={'app' + (mini ? ' mini' : '') + (drawer ? ' drawer-open' : '')}>
     <PhotoViewer />
+    <ExportDialog />
     <aside className="sidebar">
       <div className="side-brand">
         <span className="logo-tile" aria-hidden="true"><LogoMark /></span>

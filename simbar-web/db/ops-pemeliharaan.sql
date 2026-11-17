@@ -4,6 +4,17 @@
 
 BEGIN;
 
+-- Kalibrasi (as in ASPAK): a fourth jenis with a layak / tidak layak result. Kalibrasi records never change the aset condition.
+ALTER TABLE simbar.pemeliharaan_aset ADD COLUMN IF NOT EXISTS hasil_kalibrasi varchar;
+ALTER TABLE simbar.pemeliharaan_aset DROP CONSTRAINT IF EXISTS pemeliharaan_aset_jenis_pemeliharaan_check;
+ALTER TABLE simbar.pemeliharaan_aset ADD CONSTRAINT pemeliharaan_aset_jenis_pemeliharaan_check
+    CHECK (jenis_pemeliharaan IN ('rutinitas', 'perbaikan', 'penggantian', 'kalibrasi'));
+ALTER TABLE simbar.pemeliharaan_aset DROP CONSTRAINT IF EXISTS pemeliharaan_aset_hasil_kalibrasi_check;
+ALTER TABLE simbar.pemeliharaan_aset ADD CONSTRAINT pemeliharaan_aset_hasil_kalibrasi_check
+    CHECK (hasil_kalibrasi IS NULL OR hasil_kalibrasi IN ('layak', 'tidak_layak'));
+CREATE INDEX IF NOT EXISTS pemeliharaan_aset_kalibrasi_idx ON simbar.pemeliharaan_aset (barang_aset_id, tanggal_pemeliharaan DESC)
+    WHERE jenis_pemeliharaan = 'kalibrasi';
+
 CREATE OR REPLACE FUNCTION public.simbar_pemeliharaan_options()
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
@@ -40,7 +51,7 @@ BEGIN
         SELECT p.* FROM simbar.pemeliharaan_aset p WHERE actor.role <> 'staff' OR p.created_by = actor.id
     ), matched AS MATERIALIZED (
         SELECT p.id, p.tanggal_pemeliharaan AS date, p.jenis_pemeliharaan AS jenis, p.status, p.teknisi, p.biaya,
-               p.deskripsi_masalah AS deskripsi, p.tindakan_perbaikan AS tindakan, p.tanggal_selesai AS selesai,
+               p.deskripsi_masalah AS deskripsi, p.tindakan_perbaikan AS tindakan, p.tanggal_selesai AS selesai, p.hasil_kalibrasi AS hasil,
                a.kode_aset AS code, a.nama_aset AS name, r.nama_ruangan AS room, p.lampiran_foto IS NOT NULL AS has_photo
         FROM scoped p
         JOIN simbar.barang_aset a ON a.id = p.barang_aset_id
@@ -124,6 +135,7 @@ DECLARE
     cost numeric := nullif(form->>'biaya', '')::numeric;
     new_status text := coalesce(form->>'status', 'menunggu');
     finished date := nullif(form->>'tanggal_selesai', '')::date;
+    hasil text := nullif(form->>'hasil_kalibrasi', '');
     photo text;
     aset_name text;
     saved bigint;
@@ -143,8 +155,10 @@ BEGIN
         RAISE check_violation USING MESSAGE = 'Ruangan harus dipilih.';
     ELSIF tanggal IS NULL THEN
         RAISE check_violation USING MESSAGE = 'Tanggal pemeliharaan harus diisi.';
-    ELSIF jenis IS NULL OR jenis NOT IN ('rutinitas', 'perbaikan', 'penggantian') THEN
+    ELSIF jenis IS NULL OR jenis NOT IN ('rutinitas', 'perbaikan', 'penggantian', 'kalibrasi') THEN
         RAISE check_violation USING MESSAGE = 'Jenis pemeliharaan harus dipilih.';
+    ELSIF jenis = 'kalibrasi' AND (hasil IS NULL OR hasil NOT IN ('layak', 'tidak_layak')) THEN
+        RAISE check_violation USING MESSAGE = 'Hasil kalibrasi harus dipilih (layak / tidak layak).';
     ELSIF deskripsi IS NULL THEN
         RAISE check_violation USING MESSAGE = 'Deskripsi masalah harus diisi.';
     ELSIF tech IS NULL OR char_length(tech) > 100 THEN
@@ -157,12 +171,18 @@ BEGIN
     IF photo IS DISTINCT FROM current.lampiran_foto THEN
         PERFORM simbar.check_media_reference(actor.id, photo);
     END IF;
+    IF jenis <> 'kalibrasi' THEN
+        hasil := NULL;
+    END IF;
 
     IF pemeliharaan_id IS NULL THEN
+        -- A kalibrasi is recorded after it happened, so it starts as selesai on its own date.
         INSERT INTO simbar.pemeliharaan_aset (barang_aset_id, ruangan_id, tanggal_pemeliharaan, jenis_pemeliharaan, deskripsi_masalah,
-            tindakan_perbaikan, status, teknisi, biaya, lampiran_foto, catatan, created_by, created_at, updated_at)
-        VALUES (aset_ref, room_ref, tanggal, jenis, deskripsi, nullif(btrim(form->>'tindakan_perbaikan'), ''), 'menunggu', tech, cost,
-            photo, nullif(btrim(form->>'catatan'), ''), actor.id, simbar.local_now(), simbar.local_now())
+            tindakan_perbaikan, status, teknisi, biaya, lampiran_foto, catatan, hasil_kalibrasi, tanggal_selesai, created_by, created_at, updated_at)
+        VALUES (aset_ref, room_ref, tanggal, jenis, deskripsi, nullif(btrim(form->>'tindakan_perbaikan'), ''),
+            CASE WHEN jenis = 'kalibrasi' THEN 'selesai' ELSE 'menunggu' END, tech, cost,
+            photo, nullif(btrim(form->>'catatan'), ''), hasil, CASE WHEN jenis = 'kalibrasi' THEN tanggal END,
+            actor.id, simbar.local_now(), simbar.local_now())
         RETURNING id INTO saved;
         IF jenis = 'perbaikan' THEN
             UPDATE simbar.barang_aset SET butuh_perbaikan = true, updated_at = simbar.local_now() WHERE id = aset_ref;
@@ -177,9 +197,11 @@ BEGIN
     UPDATE simbar.pemeliharaan_aset SET barang_aset_id = aset_ref, ruangan_id = room_ref, tanggal_pemeliharaan = tanggal,
         jenis_pemeliharaan = jenis, deskripsi_masalah = deskripsi, tindakan_perbaikan = nullif(btrim(form->>'tindakan_perbaikan'), ''),
         status = new_status, teknisi = tech, biaya = cost, lampiran_foto = photo, tanggal_selesai = finished,
-        catatan = nullif(btrim(form->>'catatan'), ''), updated_at = simbar.local_now()
+        catatan = nullif(btrim(form->>'catatan'), ''), hasil_kalibrasi = hasil, updated_at = simbar.local_now()
     WHERE id = pemeliharaan_id;
-    PERFORM simbar.apply_pemeliharaan_status(aset_ref, new_status);
+    IF jenis <> 'kalibrasi' THEN
+        PERFORM simbar.apply_pemeliharaan_status(aset_ref, new_status);
+    END IF;
     PERFORM simbar.write_log(actor.id, 'pemeliharaan_updated', 'Pemeliharaan #' || pemeliharaan_id || ' diupdate, status: ' || new_status);
     RETURN pemeliharaan_id;
 END;
@@ -205,7 +227,9 @@ BEGIN
         tanggal_selesai = CASE WHEN new_status = 'selesai' THEN simbar.local_today() ELSE tanggal_selesai END,
         updated_at = simbar.local_now()
     WHERE id = pemeliharaan_id;
-    PERFORM simbar.apply_pemeliharaan_status(current.barang_aset_id, new_status);
+    IF current.jenis_pemeliharaan <> 'kalibrasi' THEN
+        PERFORM simbar.apply_pemeliharaan_status(current.barang_aset_id, new_status);
+    END IF;
     PERFORM simbar.write_log(actor.id, 'pemeliharaan_updated', 'Pemeliharaan #' || pemeliharaan_id || ' diupdate, status: ' || new_status);
 END;
 $function$;

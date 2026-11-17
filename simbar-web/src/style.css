@@ -337,6 +337,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .badge.completed, .badge.disetujui, .badge.kondisi-baik, .badge.status-selesai { background: var(--ok-bg); color: var(--ok-fg); }
 .badge.rejected, .badge.cancelled, .badge.ditolak, .badge.kondisi-rusak_berat, .badge.status-rusak { background: var(--bad-bg); color: var(--bad-fg); }
 .badge.revisi { background: var(--violet-bg); color: var(--violet-fg); }
+.badge.kal-berlaku, .badge.hasil-layak { background: var(--ok-bg); color: var(--ok-fg); }
+.badge.kal-segera { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.kal-lewat, .badge.hasil-tidak_layak { background: var(--bad-bg); color: var(--bad-fg); }
 
 /* Detail views, photos, lists */
 .detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-column: 1 / -1; gap: 10px 16px; margin: 0; }
@@ -665,7 +668,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: #10b981; }
 .public-content { margin: 0 auto; }
 .public-hero { margin: 4px 0 22px; }
 .public-hero h1 { margin: 6px 0; font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 850; letter-spacing: -.02em; }
-.public-hero p:last-child { max-width: 62ch; color: var(--muted); }
+.public-hero > p:last-of-type { max-width: 62ch; color: var(--muted); }
+.public-hero .form-actions { margin-top: 14px; }
+.public-aset { max-width: 760px; margin: 0 auto; }
+.public-aset h2 { margin: 6px 0 14px; font-size: clamp(1.4rem, 3vw, 1.9rem); }
+.public-aset .detail-list { margin-bottom: 16px; }
+.public-aset .cell-note { display: block; margin-top: 4px; }
+.public-aset > .muted { margin: 4px 0 12px; }
 .login-overlay {
   position: fixed; inset: 0; z-index: 60; display: flex; padding: 32px 16px; overflow-y: auto;
   background: rgba(15, 23, 42, .62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade-in .2s ease;
@@ -915,9 +924,13 @@ body.printing-labels .label-print { display: block; }
   body * { visibility: hidden !important; }
   .print-area, .print-area * { visibility: visible !important; }
   .print-area { display: block !important; position: absolute; inset: 0 0 auto 0; color: #000; font: 10.5pt/1.35 "Times New Roman", Times, serif; }
-  .print-kop { text-align: center; border-bottom: 3px double #000; padding-bottom: 6px; margin-bottom: 10px; }
-  .print-kop p { margin: 0; font-weight: 700; font-size: 12pt; letter-spacing: .02em; }
-  .print-kop p:first-child { font-size: 11pt; font-weight: 600; }
+  .print-kop { display: flex; align-items: center; gap: 12px; text-align: center; padding-bottom: 5px; margin-bottom: 10px;
+    border-bottom: 3pt solid #000; box-shadow: 0 2.2pt 0 #fff, 0 3pt 0 #000; font-family: Arial, Helvetica, sans-serif; }
+  .print-kop > div { flex: 1; min-width: 0; }
+  .print-kop img { flex: none; width: 21mm; height: 21mm; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-kop p { margin: 0; font-size: 14pt; line-height: 1.2; letter-spacing: .02em; }
+  .print-kop p.kop-unit { font-size: 15pt; font-weight: 700; }
+  .print-kop p.kop-alamat { font-size: 9pt; letter-spacing: 0; line-height: 1.3; }
   .print-title { margin: 6px 0 0; text-align: center; font-size: 13pt; color: #000; }
   .print-subtitle { margin: 2px 0 10px; text-align: center; font-size: 10.5pt; }
   .print-area .kartu-info { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 8px; }
@@ -1101,3 +1114,9 @@ body.printing-labels .label-print { display: block; }
   .batch-form .batch-meta { grid-template-columns: 1fr; }
   .batch-form .photo-list li { flex-wrap: wrap; }
 }
+
+/* Unduh / Cetak: one dialog for every export */
+.export-dialog { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; padding: 16px; background: rgba(2, 6, 23, .7); }
+.export-box { width: min(100%, 420px); display: grid; gap: 10px; padding: 18px; border-radius: 18px; background: var(--surface); }
+.export-box p { margin: 0; }
+.export-box button { justify-content: center; text-align: center; }
