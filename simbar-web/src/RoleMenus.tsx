@@ -27,7 +27,7 @@ export const MENU_GROUPS: { title: string; items: MenuEntry[] }[] = [
       hint: 'Usulan penerimaan; menjadi aset setelah disetujui.' },
   ] },
   { title: 'Gudang', items: [
-    { id: 'mutasi', desc: 'Catat barang masuk dan keluar gudang', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
+    { id: 'mutasi', desc: 'Catat barang masuk, keluar, dan pindah ruangan aset', label: 'Mutasi Barang', icon: 'fa-right-left', color: 'green', share: 'parent', rights: ['in', 'out'],
       hint: 'Barang masuk dan keluar dalam satu halaman; tampil jika salah satu hak di bawah dicentang.' },
     { id: 'in', label: 'Barang Masuk', icon: 'fa-arrow-down', color: 'green', share: 'yes', right: true, hint: 'Tab Masuk: mencatat barang masuk; stok bertambah.' },
     { id: 'out', label: 'Barang Keluar', icon: 'fa-arrow-up', color: 'red', share: 'yes', right: true, hint: 'Tab Keluar: mencatat barang keluar; stok berkurang.' },

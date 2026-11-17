@@ -425,7 +425,8 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
             initial={section === 'checklist' ? 'pickup' : section === 'verifikasi' ? 'permintaan' : section === 'usulan-admin' ? 'usulan' : undefined} />
       : section === 'mutasi' || section === 'in' || section === 'out'
         ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section}
-            allowed={(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind)))} />
+            allowed={[...(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind))),
+              ...(warehouse ? ['aset' as const] : [])]} />
       : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))
         ? <Catalog list={(edit, version, add, refresh) => <>
             <FotoAsliPanel version={version} refresh={refresh} />

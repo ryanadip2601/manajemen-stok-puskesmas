@@ -3,6 +3,7 @@ import { PhotoField } from './media';
 import { exportAssetsCsv } from './Penyusutan';
 import { rpc } from './supabase';
 import { AssetPhotoPanel, AssetThumb, type Contoh } from './AsetFoto';
+import { AssetMoves } from './MutasiAset';
 
 type Room = { id: number; name: string; lokasi: string | null; keterangan: string | null; active: boolean; placeholder: boolean; assets: number };
 type Category = {
@@ -265,6 +266,7 @@ function AssetDetail({ detail, warehouse, busy, onEdit, onDelete, onClose, onRep
         {detail.pemeliharaan.map((entry) => <li key={entry.id}>{date(entry.tanggal)} · {jenisLabels[entry.jenis]} · {pemeliharaanStatus[entry.status]} · {entry.teknisi}
           <span className="cell-note">{entry.deskripsi}</span></li>)}
       </ul> : 'Belum ada.'}</dd></div>
+      <div className="wide"><dt>Riwayat pindah ruangan</dt><dd><AssetMoves asetId={detail.id} /></dd></div>
     </dl>
     <div className="form-actions wide">
       {onReport && <button className="primary" onClick={onReport}><i className="fas fa-screwdriver-wrench" aria-hidden="true" /> Laporkan rusak</button>}

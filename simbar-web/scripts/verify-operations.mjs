@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql', 'ops-mutasi-aset.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -610,6 +610,34 @@ try {
   await assert.rejects(db.query(`SELECT public.simbar_aset_set_foto($1, 'media:' || $2)`, [twin.b, 'ef'.repeat(32)]), /Foto tidak ditemukan/);
   await as(STAFF);
   await assert.rejects(db.query('SELECT public.simbar_aset_set_foto($1, NULL)', [twin.a]), /Akses ditolak/);
+  await as(ADMIN);
+
+  // Mutasi aset: pindah ruangan bolak-balik tercatat per aset; staff hanya bisa melihat.
+  const mAset = await one(`SELECT a.id, a.ruangan_id AS room FROM simbar.barang_aset a ORDER BY a.id LIMIT 1`);
+  const mRoom = (await one(`SELECT id FROM simbar.ruangan WHERE is_active AND id <> $1 ORDER BY id LIMIT 1`, [mAset.room])).id;
+  await db.query(`UPDATE simbar.ruangan SET is_active = true WHERE id = $1`, [mAset.room]);
+  const mBefore = (await one(`SELECT count(*)::int AS n FROM simbar.mutasi_aset WHERE barang_aset_id = $1`, [mAset.id])).n;
+  await assert.rejects(db.query(`SELECT public.simbar_mutasi_aset_move($1, $2, (simbar.local_today() + 1), NULL)`, [[mAset.id], mRoom]), /Tanggal pindah/);
+  await assert.rejects(db.query(`SELECT public.simbar_mutasi_aset_move($1, $2, simbar.local_today(), NULL)`, [[mAset.id], mAset.room]), /sudah berada/);
+  const mGo = (await one(`SELECT public.simbar_mutasi_aset_move($1, $2, DATE '2026-01-05', 'Dipinjam') AS m`, [[mAset.id], mRoom])).m;
+  assert.equal(mGo.moved, 1);
+  await db.query(`SELECT public.simbar_mutasi_aset_move($1, $2, DATE '2026-01-09', 'Dikembalikan')`, [[mAset.id], mAset.room]);
+  const mList = (await one(`SELECT public.simbar_mutasi_aset_list($1, 1) AS l`, [JSON.stringify({ aset: mAset.id })])).l;
+  assert.equal(mList.total, mBefore + 2);
+  assert.equal(mList.rows[0].alasan, 'Dikembalikan');
+  assert.equal(mList.rows[0].dari, mList.rows[1].ke);
+  assert.equal(mList.rows[0].ke, mList.rows[1].dari);
+  assert.equal(String(mList.rows[1].tanggal).slice(0, 10), '2026-01-05');
+  assert.ok(mList.rows[0].petugas);
+  // "Pindahkan" in Daftar aset is recorded by the trigger too, without a reason and dated today.
+  await db.query('SELECT public.simbar_aset_move($1, $2)', [[mAset.id], mRoom]);
+  const mBulk = (await one(`SELECT public.simbar_mutasi_aset_list($1, 0) AS l`, [JSON.stringify({ aset: mAset.id, ruangan: mRoom })])).l;
+  assert.equal(mBulk.total, mBefore + 3);
+  assert.equal(mBulk.rows[0].alasan, null);
+  assert.equal((await one(`SELECT ruangan_id AS r FROM simbar.barang_aset WHERE id = $1`, [mAset.id])).r, mRoom);
+  await as(STAFF);
+  await assert.rejects(db.query(`SELECT public.simbar_mutasi_aset_move($1, $2, simbar.local_today(), NULL)`, [[mAset.id], mAset.room]), /Akses ditolak/);
+  assert.ok((await one(`SELECT public.simbar_mutasi_aset_list('{}', 1) AS l`)).l.total >= 3);
   await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
