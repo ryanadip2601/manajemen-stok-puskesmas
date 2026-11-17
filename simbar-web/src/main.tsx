@@ -232,6 +232,8 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
   // A tapped notification opens the app at /?menu=<section>.
   // A scanned asset label opens /?aset=<id>: go straight to that asset.
   const [openAset] = useState(() => Number(new URLSearchParams(window.location.search).get('aset')) || undefined);
+  // The app-icon shortcut "Terima barang" opens /?menu=in&terima=scan: Barang masuk with the batch form and the camera ready.
+  const [terimaScan] = useState(() => new URLSearchParams(window.location.search).get('terima') === 'scan');
   const [section, setSection] = useState<Section>(() => openAset ? 'aset-menu' : linkedSection(window.location.search) ?? 'summary');
   const [reload, setReload] = useState(0);
   const [mini, setMini] = useState(() => remembered('simbar-sidebar') === 'mini');
@@ -424,7 +426,7 @@ function Dashboard({ session, selfId, notice, signOut, controls }: {
         ? <Verifikasi key={section} onChange={refreshWaiting}
             initial={section === 'checklist' ? 'pickup' : section === 'verifikasi' ? 'permintaan' : section === 'usulan-admin' ? 'usulan' : undefined} />
       : section === 'mutasi' || section === 'in' || section === 'out'
-        ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section}
+        ? <Mutasi key={section} initial={section === 'mutasi' ? undefined : section} scanBatch={terimaScan && section === 'in'}
             allowed={[...(['in', 'out'] as const).filter((kind) => role === 'admin' || (!!role && roleMenus[role].includes(kind))),
               ...(warehouse ? ['aset' as const] : [])]} />
       : section === 'items' ? (role === 'admin' || (!!role && roleMenus[role].includes('catalog'))

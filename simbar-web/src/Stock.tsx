@@ -4,6 +4,7 @@ import { ItemThumb } from './media';
 import { ItemPicker } from './ItemPicker';
 import { ItemPhotoEditor } from './FotoBarang';
 import { MutasiAset } from './MutasiAset';
+import { TerimaBatch } from './TerimaBatch';
 
 type Option = { id: number; name: string };
 type Category = Option & { description: string | null; items: number };
@@ -160,13 +161,15 @@ export function Catalog({ list }: { list: (edit: (id: number) => void, version: 
   </>;
 }
 
-export function Movements({ kind }: { kind: 'in' | 'out' }) {
+export function Movements({ kind, scanBatch = false }: { kind: 'in' | 'out'; scanBatch?: boolean }) {
   const label = kind === 'in' ? 'Barang masuk' : 'Barang keluar';
   const [options, loadError, reloadOptions] = useOptions();
   const [filter, setFilter] = useState({ item: '', from: '', to: '', page: 1 });
   const [state, setState] = useState<{ data?: MovementPage; error?: string }>({});
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<Movement | 'new' | null>(null);
+  const [batch, setBatch] = useState(kind === 'in' && scanBatch);
+  const [autoScan, setAutoScan] = useState(kind === 'in' && scanBatch); // only the first open from the shortcut
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' }>({ text: '', tone: 'ok' });
   const [busy, setBusy] = useState(false);
 
@@ -223,9 +226,22 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
   return <section className="panel">
     <div className="panel-head">
       <h2>{label}</h2>
-      <button className="primary" onClick={() => { setMessage({ text: '', tone: 'ok' }); setEditing('new'); }}>Catat {label.toLowerCase()}</button>
+      <div className="form-actions">
+        {kind === 'in' && <button className="primary" onClick={() => { setMessage({ text: '', tone: 'ok' }); setEditing(null); setBatch(true); }}>
+          <i className="fas fa-barcode" aria-hidden="true" /> Terima barang (batch)</button>}
+        <button className={kind === 'in' ? 'secondary' : 'primary'} onClick={() => { setMessage({ text: '', tone: 'ok' }); setBatch(false); setEditing('new'); }}>Catat {label.toLowerCase()}</button>
+      </div>
     </div>
     <Status message={message.text} tone={message.tone} />
+    {batch && <TerimaBatch autoScan={autoScan} items={options.items} categories={options.categories} units={options.units} onItemsChanged={reloadOptions}
+      onCancel={() => { setBatch(false); setAutoScan(false); }} onSaved={(note) => {
+        setBatch(false);
+        setAutoScan(false);
+        setMessage({ text: note, tone: 'ok' });
+        setFilter({ item: '', from: '', to: '', page: 1 });
+        setVersion((value) => value + 1);
+        reloadOptions();
+      }} />}
     {editing && <form className="record-form" onSubmit={save} key={current?.id ?? 'new'}>
       <h3>{current ? 'Ubah transaksi ' + current.name : label + ' baru'}</h3>
       {current ? <p className="wide">{current.name} · {current.code}</p>
@@ -281,7 +297,7 @@ export function Movements({ kind }: { kind: 'in' | 'out' }) {
 
 // Mutasi Barang: barang masuk, barang keluar and (aset only) pindah ruangan on one page, one tab per right the role has.
 type MutasiTab = 'in' | 'out' | 'aset';
-export function Mutasi({ allowed, initial }: { allowed: MutasiTab[]; initial?: MutasiTab }) {
+export function Mutasi({ allowed, initial, scanBatch }: { allowed: MutasiTab[]; initial?: MutasiTab; scanBatch?: boolean }) {
   const [tab, setTab] = useState<MutasiTab>(initial && allowed.includes(initial) ? initial : allowed[0] ?? 'in');
   const shown = allowed.includes(tab) ? tab : allowed[0];
   if (!shown) return <section className="panel"><h2>Mutasi barang</h2><p role="status">Tidak ada akses mutasi untuk peran ini.</p></section>;
@@ -294,6 +310,6 @@ export function Mutasi({ allowed, initial }: { allowed: MutasiTab[]; initial?: M
       {allowed.includes('aset') && <button className="secondary" aria-pressed={shown === 'aset'} onClick={() => setTab('aset')}>
         <i className="fas fa-door-open" aria-hidden="true" /> Pindah ruangan</button>}
     </div>}
-    {shown === 'aset' ? <MutasiAset /> : <Movements key={shown} kind={shown} />}
+    {shown === 'aset' ? <MutasiAset /> : <Movements key={shown} kind={shown} scanBatch={scanBatch} />}
   </>;
 }

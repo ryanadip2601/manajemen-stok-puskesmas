@@ -12,6 +12,15 @@
   "lang": "id",
   "background_color": "#0f172a",
   "theme_color": "#1e293b",
+  "shortcuts": [
+    {
+      "name": "Terima barang (scan barcode)",
+      "short_name": "Terima barang",
+      "description": "Scan barcode barang yang baru datang, langsung masuk stok",
+      "url": "/?menu=in&terima=scan",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

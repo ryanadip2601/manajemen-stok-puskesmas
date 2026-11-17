@@ -33,7 +33,7 @@ try {
       RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.calls VALUES (url, body, headers); SELECT 1::bigint $$;`);
   await db.exec(await read('schema.sql'));
   await db.exec(data);
-  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql', 'ops-mutasi-aset.sql'];
+  const operations = ['ops-core.sql', 'ops-menus.sql', 'ops-stock.sql', 'ops-pickup.sql', 'ops-permintaan.sql', 'ops-usulan.sql', 'ops-pengajuan.sql', 'ops-media.sql', 'ops-aset.sql', 'ops-pemeliharaan.sql', 'ops-penyusutan.sql', 'ops-laporan.sql', 'ops-users.sql', 'ops-public.sql', 'ops-push.sql', 'ops-verifikasi.sql', 'ops-laporan-baru.sql', 'ops-rapikan.sql', 'ops-foto-barang.sql', 'ops-foto-aset.sql', 'ops-mutasi-aset.sql', 'ops-terima-batch.sql'];
   for (const name of ['media-objects.sql', ...operations]) await db.exec(await read(name));
   for (const name of operations) await db.exec(await read(name)); // re-runnable
 
@@ -638,6 +638,38 @@ try {
   await as(STAFF);
   await assert.rejects(db.query(`SELECT public.simbar_mutasi_aset_move($1, $2, simbar.local_today(), NULL)`, [[mAset.id], mAset.room]), /Akses ditolak/);
   assert.ok((await one(`SELECT public.simbar_mutasi_aset_list('{}', 1) AS l`)).l.total >= 3);
+  await as(ADMIN);
+
+  // Terima barang (batch): barcode lookup, linking, and an all-or-nothing batch of barang masuk.
+  const bUnit = (await one('SELECT id FROM simbar.units ORDER BY id LIMIT 1')).id;
+  const bCat = (await one('SELECT id FROM simbar.categories ORDER BY id LIMIT 1')).id;
+  const bA = (await one(`SELECT public.simbar_item_save(NULL, 'BATCH-A', 'Batch A', $1, $2, 'APBD', 0, 0, NULL, '8990001112223', 0) AS id`, [bCat, bUnit])).id;
+  const bB = (await one(`SELECT public.simbar_item_save(NULL, 'BATCH-B', 'Batch B', $1, $2, 'APBD', 0, 0) AS id`, [bCat, bUnit])).id;
+  assert.equal((await one(`SELECT public.simbar_item_by_barcode(' 8990001112223 ') AS i`)).i.id, bA);
+  assert.equal((await one(`SELECT public.simbar_item_by_barcode('8990009999999') AS i`)).i, null);
+  await assert.rejects(db.query(`SELECT public.simbar_item_by_barcode('12')`), /Barcode tidak valid/);
+  await assert.rejects(db.query(`SELECT public.simbar_item_link_barcode($1, '8990001112223')`, [bB]), /sudah dipakai barang "Batch A"/);
+  await db.query(`SELECT public.simbar_item_link_barcode($1, '8990004445556')`, [bB]);
+  await db.query(`SELECT public.simbar_item_link_barcode($1, '8990004445556')`, [bB]);
+  await assert.rejects(db.query(`SELECT public.simbar_item_link_barcode($1, '8990007777777')`, [bB]), /sudah punya barcode lain/);
+  assert.equal((await one(`SELECT public.simbar_item_by_barcode('8990004445556') AS i`)).i.name, 'Batch B');
+  const bLines = (lines) => JSON.stringify(lines);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch('2026-11-10', 'x', $1)`, [bLines([])]), /Daftar barang kosong/);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch('2026-11-10', 'x', $1)`,
+    [bLines([{ item: bA, quantity: 2 }, { item: bA, quantity: 1 }])]), /dua kali/);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch('2026-11-10', 'x', $1)`,
+    [bLines([{ item: bA, quantity: 5 }, { item: bB, quantity: 0 }])]), /Jumlah minimal 1/);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch((simbar.local_today() + 1), 'x', $1)`, [bLines([{ item: bA, quantity: 1 }])]), /Tanggal/);
+  assert.equal(await stockOf(bA), 0, 'A failed batch leaves no stock behind.');
+  const bSaved = (await one(`SELECT public.simbar_stock_in_batch('2026-11-10', 'Dropping uji', $1) AS r`,
+    [bLines([{ item: bA, quantity: 5 }, { item: bB, quantity: 12 }])])).r;
+  assert.deepEqual(bSaved, { lines: 2, units: 17 });
+  assert.equal(await stockOf(bA), 5);
+  assert.equal(await stockOf(bB), 12);
+  assert.equal((await one(`SELECT count(*)::int AS n FROM simbar.stock_in WHERE item_id IN ($1, $2) AND notes = 'Dropping uji'`, [bA, bB])).n, 2);
+  await as(STAFF);
+  await assert.rejects(db.query(`SELECT public.simbar_stock_in_batch('2026-11-10', 'x', $1)`, [bLines([{ item: bA, quantity: 1 }])]), /Akses ditolak/);
+  await assert.rejects(db.query(`SELECT public.simbar_item_by_barcode('8990001112223')`), /Akses ditolak/);
   await as(ADMIN);
 
   const logs = await one(`SELECT count(*)::int AS n FROM simbar.logs WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [admin.id]);
